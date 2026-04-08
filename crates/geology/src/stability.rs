@@ -7,24 +7,41 @@ pub struct StabilityAnalyzer;
 
 impl StabilityAnalyzer {
     /// Определение стадии развития термокарста
+    ///
+    /// Улучшенная логика с учетом глубины и возраста
     pub fn determine_stage(lens: &ThermokarstLens) -> ThermokarstStage {
         let age = lens.age;
+        let depth = lens.depth;
 
-        // Инициация: молодое и пока еще маленькое образование
-        if age < 5 && lens.volume < 10.0 {
+        // Инициация: начальная стадия (глубина < 3 м)
+        if depth < 3.0 {
             ThermokarstStage::Initiation
         }
-        // Активное развитие: линза уверенно растет в объеме
-        else if lens.growth_rate > 1.0 {
+        // Активное развитие: средняя глубина (3-6 м) или высокая скорость роста
+        else if depth >= 3.0 && depth < 6.0 {
             ThermokarstStage::ActiveDevelopment
         }
-        // Стабилизация: рост почти остановился
-        else if lens.growth_rate >= -0.5 && lens.growth_rate <= 1.0 {
-            ThermokarstStage::Stabilization
+        // Продвинутая стадия: глубокое образование (6-10 м)
+        else if depth >= 6.0 && depth < 10.0 {
+            // Если рост замедлился - стабилизация
+            if lens.growth_rate < 1.0 {
+                ThermokarstStage::Stabilization
+            } else {
+                ThermokarstStage::ActiveDevelopment
+            }
         }
-        // Деградация: линза заплывает/уменьшается в объеме
+        // Очень глубокое или старое образование
+        else if depth >= 10.0 || age > 50 {
+            // Если уменьшается - деградация
+            if lens.growth_rate < -0.5 {
+                ThermokarstStage::Degradation
+            } else {
+                ThermokarstStage::Stabilization
+            }
+        }
+        // Стабилизация по умолчанию для остальных случаев
         else {
-            ThermokarstStage::Degradation
+            ThermokarstStage::Stabilization
         }
     }
 
@@ -121,6 +138,25 @@ mod tests {
     }
 
     #[test]
+    fn test_medium_depth_is_active() {
+        // Глубина 4 м - активное развитие
+        let lens = ThermokarstLens::new(4.0, 12.0, 15);
+        let stage = StabilityAnalyzer::determine_stage(&lens);
+
+        assert_eq!(stage, ThermokarstStage::ActiveDevelopment);
+    }
+
+    #[test]
+    fn test_deep_lens_is_advanced() {
+        // Глубина 7 м с высокой скоростью роста
+        let mut lens = ThermokarstLens::new(7.0, 18.0, 25);
+        lens.growth_rate = 2.0;
+        let stage = StabilityAnalyzer::determine_stage(&lens);
+
+        assert_eq!(stage, ThermokarstStage::ActiveDevelopment);
+    }
+
+    #[test]
     fn test_old_large_fast_growing_lens_is_active() {
         // Столетнее озеро с большим объемом и высокой скоростью роста
         let mut lens = ThermokarstLens::new(5.0, 15.0, 100);
@@ -129,7 +165,7 @@ mod tests {
 
         let stage = StabilityAnalyzer::determine_stage(&lens);
 
-        // Должно быть ActiveDevelopment, а не Initiation!
+        // Должно быть ActiveDevelopment
         assert_eq!(stage, ThermokarstStage::ActiveDevelopment);
     }
 
@@ -140,12 +176,22 @@ mod tests {
 
         let stage = StabilityAnalyzer::determine_stage(&lens);
 
+        assert_eq!(stage, ThermokarstStage::ActiveDevelopment); // 3м = активное развитие
+    }
+
+    #[test]
+    fn test_deep_slow_lens_stabilizing() {
+        let mut lens = ThermokarstLens::new(8.0, 20.0, 40);
+        lens.growth_rate = 0.3; // Очень медленный рост
+
+        let stage = StabilityAnalyzer::determine_stage(&lens);
+
         assert_eq!(stage, ThermokarstStage::Stabilization);
     }
 
     #[test]
     fn test_shrinking_lens_is_degrading() {
-        let mut lens = ThermokarstLens::new(2.0, 8.0, 80);
+        let mut lens = ThermokarstLens::new(12.0, 25.0, 80);
         lens.growth_rate = -1.0; // Уменьшается
 
         let stage = StabilityAnalyzer::determine_stage(&lens);

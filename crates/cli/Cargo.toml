@@ -7,6 +7,10 @@ edition.workspace = true
 name = "thermokarst"
 path = "src/main.rs"
 
+[[example]]
+name = "newton_richards_example"
+path = "../../examples/newton_richards_example.rs"
+
 [features]
 download = ["thermokarst-image-processing/download"]
 visualization = ["thermokarst-simulation/visualization"]

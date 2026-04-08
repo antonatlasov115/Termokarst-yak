@@ -12,6 +12,7 @@ thermokarst-core = { path = "../core" }
 thermokarst-physics = { path = "../physics" }
 thermokarst-geology = { path = "../geology" }
 thermokarst-simulation = { path = "../simulation" }
+thermokarst-image-processing = { path = "../image-processing" }
 clap.workspace = true
 anyhow.workspace = true
 serde.workspace = true

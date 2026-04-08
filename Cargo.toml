@@ -5,6 +5,7 @@ members = [
     "crates/geology",
     "crates/simulation",
     "crates/cli",
+    "crates/image-processing",
 ]
 resolver = "2"
 

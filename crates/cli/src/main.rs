@@ -72,6 +72,56 @@ enum Commands {
         #[command(subcommand)]
         command: DatasetCommands,
     },
+
+    /// Обработка изображений
+    Image {
+        #[command(subcommand)]
+        command: ImageCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ImageCommands {
+    /// Загрузить примеры изображений
+    Download {
+        /// Директория для сохранения
+        #[arg(short, long, default_value = "images")]
+        output_dir: PathBuf,
+    },
+
+    /// Проанализировать изображение
+    Analyze {
+        /// Файл изображения
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Масштаб (метров на пиксель)
+        #[arg(short, long, default_value = "0.1")]
+        scale: f64,
+
+        /// Файл для сохранения датасета
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// ID точки наблюдения
+        #[arg(long, default_value = "PHOTO")]
+        site_id: String,
+
+        /// Координаты (lat,lon)
+        #[arg(short, long)]
+        coordinates: Option<String>,
+    },
+
+    /// Создать синтетическое изображение
+    Synthetic {
+        /// Файл для сохранения
+        #[arg(short, long, default_value = "synthetic.jpg")]
+        output: PathBuf,
+
+        /// Диаметр в пикселях
+        #[arg(short, long, default_value = "200")]
+        diameter: u32,
+    },
 }
 
 #[derive(Subcommand)]
@@ -127,6 +177,16 @@ fn main() -> Result<()> {
             DatasetCommands::Create { output } => dataset::create(output)?,
             DatasetCommands::Info { input } => dataset::info(input)?,
             DatasetCommands::Calibrate { input, output } => dataset::calibrate(input, output)?,
+        },
+
+        Commands::Image { command } => match command {
+            ImageCommands::Download { output_dir } => image::download(output_dir)?,
+            ImageCommands::Analyze { input, scale, output, site_id, coordinates } => {
+                image::analyze(input, scale, output, site_id, coordinates)?
+            }
+            ImageCommands::Synthetic { output, diameter } => {
+                image::create_synthetic(output, diameter)?
+            }
         },
     }
 

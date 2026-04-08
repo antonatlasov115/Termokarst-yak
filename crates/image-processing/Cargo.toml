@@ -1,0 +1,21 @@
+[package]
+name = "thermokarst-image-processing"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thermokarst-core = { path = "../core" }
+image = "0.25"
+imageproc = "0.25"
+ndarray = "0.16"
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+reqwest = { version = "0.12", features = ["blocking"], optional = true }
+
+[features]
+default = []
+download = ["reqwest"]
+
+[dev-dependencies]
+tempfile = "3.10"

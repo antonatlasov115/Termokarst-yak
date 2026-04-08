@@ -83,10 +83,23 @@ pub fn run(region: String, years: u32, output: Option<PathBuf>, verbose: bool) -
     // Сохранение результатов
     if let Some(output_path) = output {
         println!("\n💾 Сохранение результатов в {:?}...", output_path);
+
+        // Создаем историю результатов по годам для визуализации
+        let history: Vec<_> = result
+            .lenses
+            .iter()
+            .map(|lens| thermokarst_core::SimulationResult {
+                lenses: vec![lens.clone()],
+                environment: result.environment.clone(),
+                stage: result.stage,
+                total_years: lens.age,
+            })
+            .collect();
+
         let json =
-            serde_json::to_string_pretty(&result).context("Ошибка сериализации результатов")?;
+            serde_json::to_string_pretty(&history).context("Ошибка сериализации результатов")?;
         std::fs::write(&output_path, json).context("Ошибка записи файла")?;
-        println!("✅ Результаты сохранены");
+        println!("✅ Результаты сохранены (формат для визуализации)");
     }
 
     Ok(())

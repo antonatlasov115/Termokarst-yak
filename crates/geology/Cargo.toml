@@ -1,0 +1,8 @@
+[package]
+name = "thermokarst-geology"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thermokarst-core = { path = "../core" }
+serde.workspace = true

@@ -1,0 +1,11 @@
+[package]
+name = "thermokarst-simulation"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thermokarst-core = { path = "../core" }
+thermokarst-physics = { path = "../physics" }
+thermokarst-geology = { path = "../geology" }
+rayon.workspace = true
+serde.workspace = true

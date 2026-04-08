@@ -1,0 +1,9 @@
+[package]
+name = "thermokarst-physics"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thermokarst-core = { path = "../core" }
+nalgebra.workspace = true
+serde.workspace = true

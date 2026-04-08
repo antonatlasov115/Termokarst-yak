@@ -1,0 +1,9 @@
+.DS_Store
+target/
+Cargo.lock
+*.json
+!Cargo.json
+results/
+*.swp
+*.swo
+*~

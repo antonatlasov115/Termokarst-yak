@@ -11,6 +11,7 @@ rayon.workspace = true
 serde.workspace = true
 anyhow.workspace = true
 plotters = { workspace = true, optional = true }
+rand = "0.10.0"
 
 [features]
 default = ["visualization"]

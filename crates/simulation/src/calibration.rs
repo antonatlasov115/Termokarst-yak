@@ -53,6 +53,7 @@ impl ModelCalibrator {
             water_availability: 0.6,
             permafrost_depth: avg_alt,
             warm_season_days: 120,
+            temperature_amplitude: 88.0, // Типичная для Центральной Якутии
         })
     }
 

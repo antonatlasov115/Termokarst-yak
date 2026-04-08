@@ -165,6 +165,39 @@ enum DatasetCommands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    /// Импортировать данные из IRYP датасета
+    Import {
+        /// Путь к IRYP_v2.tab файлу
+        #[arg(short, long)]
+        source: PathBuf,
+
+        /// Файл для сохранения результатов
+        #[arg(short, long, default_value = "iryp_yakutia.json")]
+        output: PathBuf,
+    },
+
+    /// Визуализировать точки наблюдений IRYP
+    VisualizeIryp {
+        /// Файл с данными IRYP (JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Директория для сохранения визуализаций
+        #[arg(short, long, default_value = "visualizations")]
+        output_dir: PathBuf,
+    },
+
+    /// Симулировать термокарст для точек IRYP
+    SimulateIryp {
+        /// Файл с данными IRYP (JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Количество лет симуляции
+        #[arg(short, long, default_value = "50")]
+        years: u32,
+    },
 }
 
 fn main() -> Result<()> {
@@ -192,6 +225,13 @@ fn main() -> Result<()> {
             DatasetCommands::Create { output } => dataset::create(output)?,
             DatasetCommands::Info { input } => dataset::info(input)?,
             DatasetCommands::Calibrate { input, output } => dataset::calibrate(input, output)?,
+            DatasetCommands::Import { source, output } => dataset::import_iryp(source, output)?,
+            DatasetCommands::VisualizeIryp { input, output_dir } => {
+                dataset::visualize_iryp(input, output_dir)?
+            }
+            DatasetCommands::SimulateIryp { input, years } => {
+                dataset::simulate_iryp_sites(input, years)?
+            }
         },
 
         Commands::Image { command } => match command {

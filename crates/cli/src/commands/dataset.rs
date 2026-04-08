@@ -3,7 +3,9 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use thermokarst_core::dataset::{create_example_yakutia_dataset, ObservationDataset};
+use thermokarst_core::iryp::IrypParser;
 use thermokarst_simulation::calibration::ModelCalibrator;
+use thermokarst_simulation::iryp_visualization;
 
 pub fn create(output: PathBuf) -> Result<()> {
     println!("📊 Создание примера датасета для Якутии");
@@ -166,6 +168,200 @@ pub fn calibrate(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
         std::fs::write(&output_path, json).context("Ошибка записи")?;
         println!("✅ Параметры сохранены");
     }
+
+    Ok(())
+}
+
+pub fn import_iryp(input: PathBuf, output: PathBuf) -> Result<()> {
+    println!("📥 Импорт данных IRYP (Ice-Rich Yedoma Permafrost)");
+    println!("📁 Источник: {:?}", input);
+    println!("📁 Назначение: {:?}\n", output);
+
+    // Парсинг IRYP файла
+    println!("🔄 Парсинг IRYP датасета...");
+    let sites = IrypParser::parse_file(&input).context("Ошибка парсинга IRYP файла")?;
+
+    println!("✅ Загружено {} точек наблюдений", sites.len());
+
+    // Фильтрация только Якутии
+    println!("\n🔍 Фильтрация точек из Якутии...");
+    let yakutia_sites = IrypParser::filter_yakutia(sites);
+
+    println!("✅ Найдено {} точек в Якутии", yakutia_sites.len());
+
+    // Группировка по регионам
+    let groups = IrypParser::group_by_region(&yakutia_sites);
+
+    println!("\n📊 Распределение по регионам:");
+    for (region, sites) in &groups {
+        println!("  {}: {} точек", region, sites.len());
+    }
+
+    // Вывод примеров
+    println!("\n📍 Примеры точек наблюдений:");
+    for site in yakutia_sites.iter().take(5) {
+        println!("\n  🔹 {}", site.event);
+        println!(
+            "     Координаты: {:.4}°N, {:.4}°E",
+            site.latitude, site.longitude
+        );
+        println!("     Область: {}", site.area);
+        if let Some(date) = &site.date {
+            println!("     Дата: {}", date);
+        }
+        if let Some(investigator) = &site.investigator {
+            println!("     Исследователь: {}", investigator);
+        }
+        println!("     Описание: {}", site.comment);
+    }
+
+    // Сохранение в JSON
+    println!("\n💾 Сохранение данных...");
+    let json = serde_json::to_string_pretty(&yakutia_sites).context("Ошибка сериализации")?;
+    std::fs::write(&output, json).context("Ошибка записи файла")?;
+
+    println!("✅ Данные сохранены в {:?}", output);
+    println!("\n📈 Итого:");
+    println!("  Всего точек IRYP: {}", yakutia_sites.len());
+    println!("  Регионов: {}", groups.len());
+
+    Ok(())
+}
+
+pub fn visualize_iryp(input: PathBuf, output_dir: PathBuf) -> Result<()> {
+    println!("🗺️  Визуализация точек наблюдений IRYP");
+    println!("📁 Источник: {:?}", input);
+    println!("📁 Выходная директория: {:?}\n", output_dir);
+
+    // Создаем директорию если не существует
+    std::fs::create_dir_all(&output_dir)?;
+
+    // Загружаем данные
+    println!("🔄 Загрузка данных...");
+    let json_content = std::fs::read_to_string(&input)?;
+    let sites: Vec<thermokarst_core::iryp::IrypSite> = serde_json::from_str(&json_content)?;
+
+    println!("✅ Загружено {} точек", sites.len());
+
+    // Создаем карту
+    println!("\n🗺️  Создание карты...");
+    let map_path = output_dir.join("iryp_map.png");
+    iryp_visualization::create_map(
+        &sites,
+        &map_path,
+        "Точки наблюдений едомы в Якутии (IRYP v2)",
+    )
+    .context("Ошибка создания карты")?;
+    println!("✅ Карта сохранена: {:?}", map_path);
+
+    // Создаем гистограмму
+    println!("\n📊 Создание гистограммы...");
+    let hist_path = output_dir.join("iryp_latitude_histogram.png");
+    iryp_visualization::create_latitude_histogram(&sites, &hist_path)
+        .context("Ошибка создания гистограммы")?;
+    println!("✅ Гистограмма сохранена: {:?}", hist_path);
+
+    println!("\n✅ Визуализация завершена!");
+    println!("📂 Файлы сохранены в: {:?}", output_dir);
+
+    Ok(())
+}
+
+pub fn simulate_iryp_sites(input: PathBuf, years: u32) -> Result<()> {
+    println!("🔬 Симуляция термокарста для точек наблюдений IRYP");
+    println!("📁 Источник: {:?}", input);
+    println!("⏱️  Период: {} лет\n", years);
+
+    // Загружаем IRYP данные
+    let json_content = std::fs::read_to_string(&input)?;
+    let sites: Vec<thermokarst_core::iryp::IrypSite> = serde_json::from_str(&json_content)?;
+
+    println!("✅ Загружено {} точек наблюдений\n", sites.len());
+
+    // Берем РАЗНООБРАЗНЫЕ точки из ВСЕХ регионов Якутии
+    let mut all_sites: Vec<_> = sites.iter().collect();
+
+    // Удаляем дубликаты по координатам
+    all_sites.sort_by(|a, b| {
+        a.latitude
+            .partial_cmp(&b.latitude)
+            .unwrap()
+            .then(a.longitude.partial_cmp(&b.longitude).unwrap())
+    });
+    all_sites.dedup_by(|a, b| {
+        (a.latitude - b.latitude).abs() < 0.01 && (a.longitude - b.longitude).abs() < 0.01
+    });
+
+    // Выбираем точки с МАКСИМАЛЬНЫМ разбросом широт
+    // Сортируем по широте и берем равномерно распределенные
+    all_sites.sort_by(|a, b| a.latitude.partial_cmp(&b.latitude).unwrap());
+
+    let total = all_sites.len();
+    let interesting_sites: Vec<_> = if total >= 5 {
+        vec![
+            all_sites[0],             // Самая южная
+            all_sites[total / 4],     // 25%
+            all_sites[total / 2],     // Середина
+            all_sites[total * 3 / 4], // 75%
+            all_sites[total - 1],     // Самая северная
+        ]
+    } else {
+        all_sites.into_iter().take(5).collect()
+    };
+
+    println!(
+        "📍 Выбрано {} точек для симуляции:\n",
+        interesting_sites.len()
+    );
+
+    use thermokarst_core::EnvironmentParams;
+    use thermokarst_simulation::{SimulationConfig, SimulationEngine};
+
+    for site in interesting_sites {
+        println!("🔹 {}", site.event);
+        println!(
+            "   Координаты: {:.4}°N, {:.4}°E",
+            site.latitude, site.longitude
+        );
+        println!("   Область: {}", site.area);
+
+        // Определяем параметры на основе IRYP точки
+        // Функция автоматически учитывает широту, тип местности и т.д.
+        let params = thermokarst_core::estimate_params_from_site(site);
+
+        // ОТЛАДКА: выводим параметры
+        println!("   🔧 Параметры:");
+        println!("      air_temp: {:.2}°C", params.air_temp);
+        println!("      warm_season_days: {}", params.warm_season_days);
+        println!("      ice_content: {:.3}", params.ice_content);
+        println!("      vegetation_cover: {:.3}", params.vegetation_cover);
+        println!(
+            "      temperature_amplitude: {:.2}°C",
+            params.temperature_amplitude
+        );
+        let ddt = params.air_temp * params.warm_season_days as f64;
+        println!("      → DDT: {:.1} °C·дней", ddt);
+
+        let config = SimulationConfig {
+            years,
+            time_step: 1,
+            save_intermediate: false,
+            save_interval: 1,
+        };
+
+        let engine = SimulationEngine::new(params, config);
+        let result = engine.run()?;
+
+        let final_lens = result.lenses.last().unwrap();
+        println!("   📊 Прогноз через {} лет:", years);
+        println!("      Глубина просадки: {:.2} м", final_lens.depth);
+        println!("      Диаметр аласа: {:.2} м", final_lens.diameter);
+        println!("      Объем: {:.2} м³", final_lens.volume);
+        println!("      Стадия: {:?}", result.stage);
+        println!();
+    }
+
+    println!("✅ Симуляция завершена!");
 
     Ok(())
 }

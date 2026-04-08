@@ -78,6 +78,9 @@ pub struct EnvironmentParams {
 
     /// Продолжительность теплого сезона (дни)
     pub warm_season_days: u32,
+
+    /// Годовая амплитуда температур (°C) - для формулы Атласова
+    pub temperature_amplitude: f64,
 }
 
 impl Default for EnvironmentParams {
@@ -92,6 +95,7 @@ impl Default for EnvironmentParams {
             water_availability: 0.6,
             permafrost_depth: 1.5,
             warm_season_days: 120,
+            temperature_amplitude: 88.0, // Центральная Якутия
         }
     }
 }
@@ -108,6 +112,7 @@ impl EnvironmentParams {
             water_availability: 0.8,
             permafrost_depth: 0.8,
             warm_season_days: 90,
+            temperature_amplitude: 95.0, // Северная Якутия - более экстремальная
         }
     }
 
@@ -127,6 +132,7 @@ impl EnvironmentParams {
             water_availability: 0.5,
             permafrost_depth: 2.0,
             warm_season_days: 140,
+            temperature_amplitude: 75.0, // Южная Якутия - менее континентальная
         }
     }
 }

@@ -9,7 +9,9 @@ thermokarst-physics = { path = "../physics" }
 thermokarst-geology = { path = "../geology" }
 rayon.workspace = true
 serde.workspace = true
+anyhow.workspace = true
 plotters = { workspace = true, optional = true }
 
 [features]
+default = ["visualization"]
 visualization = ["plotters"]

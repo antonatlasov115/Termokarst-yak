@@ -211,6 +211,7 @@ mod tests {
             permafrost_depth: 100.0,
             warm_season_days: 120,
             water_availability: 0.5,
+            temperature_amplitude: 88.0,
         };
 
         let calc = JohansenConductivity::from_params(&params);

@@ -1,8 +1,18 @@
-//! Расчет глубины протаивания
+//! Расчет глубины протаивания по формуле Атласова
 
 use thermokarst_core::{EnvironmentParams, Result, ThermokarstError};
 
-/// Калькулятор глубины протаивания
+// Физические константы
+const L: f64 = 334_000.0; // Дж/кг - скрытая теплота плавления льда
+const RHO_W: f64 = 1000.0; // кг/м³ - плотность воды
+const SECONDS_PER_DAY: f64 = 86_400.0;
+
+// Региональные константы формулы Атласова для Якутии
+const BETA: f64 = 0.45; // коэффициент покрова/пожара
+const GAMMA: f64 = 0.12; // коэффициент континентальности
+const DT0: f64 = 40.0; // базовая амплитуда температур, °C
+
+/// Калькулятор глубины протаивания по формуле Атласова
 pub struct ThawDepthCalculator {
     params: EnvironmentParams,
 }
@@ -12,13 +22,21 @@ impl ThawDepthCalculator {
         Self { params }
     }
 
-    /// Расчет глубины протаивания по модифицированной формуле Стефана
+    /// Расчет глубины протаивания по формуле Атласова
     ///
-    /// Учитывает:
-    /// - Теплопроводность грунта
-    /// - Температурный режим
-    /// - Растительный покров
-    /// - Продолжительность теплого сезона
+    /// Формула: ξ_A = √(2λₜ·DDT / (L·ρw·w)) · exp(β·(1-V)) · (1 + γ·ln(ΔT/ΔT₀))
+    ///
+    /// где:
+    /// - λₜ - теплопроводность талого грунта
+    /// - DDT - градусо-дни тепла (degree-days of thawing)
+    /// - L - скрытая теплота плавления льда
+    /// - ρw - плотность воды
+    /// - w - объемная льдистость
+    /// - β - коэффициент покрова (0.45 для Якутии)
+    /// - V - плотность растительного покрова (0-1)
+    /// - γ - коэффициент континентальности (0.12 для Якутии)
+    /// - ΔT - годовая амплитуда температур
+    /// - ΔT₀ - базовая амплитуда (40°C)
     pub fn calculate(&self, year: u32) -> Result<f64> {
         if year == 0 {
             return Err(ThermokarstError::InvalidParameters(
@@ -26,22 +44,47 @@ impl ThawDepthCalculator {
             ));
         }
 
-        // Коэффициент теплопроводности
-        let k = self.params.soil_type.thermal_conductivity();
+        // 1. Базовая формула Стефана: ξ₀ = √(2λₜ·DDT / (L·ρw·w))
 
-        // Эффективная температура с учетом продолжительности сезона
-        let effective_temp = self.params.air_temp * (self.params.warm_season_days as f64 / 365.0);
+        // Теплопроводность талого грунта
+        let lambda_t = self.params.soil_type.thermal_conductivity();
 
-        // Фактор растительного покрова (замедляет протаивание)
-        let vegetation_factor = 1.0 - 0.35 * self.params.vegetation_cover;
+        // DDT (degree-days of thawing) в секундах
+        // DDT = средняя температура × продолжительность сезона
+        let ddt_days = self.params.air_temp * self.params.warm_season_days as f64;
+        let ddt_seconds = ddt_days * SECONDS_PER_DAY;
 
-        // Фактор льдистости (больше льда - больше энергии на таяние)
-        let ice_factor = 1.0 - 0.2 * self.params.ice_content;
+        // Объемная льдистость
+        let w = self.params.ice_content;
 
-        // Базовая формула Стефана с модификациями
-        let base_depth = (k * effective_temp * year as f64).sqrt();
+        // Проверка на деление на ноль
+        if w < 0.01 {
+            return Err(ThermokarstError::InvalidParameters(
+                "Льдистость слишком мала".to_string(),
+            ));
+        }
 
-        let depth = base_depth * vegetation_factor * ice_factor;
+        // Базовая глубина по Стефану
+        let xi_0_squared = (2.0 * lambda_t * ddt_seconds) / (L * RHO_W * w);
+        let xi_0 = xi_0_squared.sqrt();
+
+        // 2. Коэффициент покрова/пожара: K_fire = exp(β·(1-V))
+        let v = self.params.vegetation_cover;
+        let k_fire = (BETA * (1.0 - v)).exp();
+
+        // 3. Функция континентальности: f(ΔT) = 1 + γ·ln(ΔT/ΔT₀)
+        let delta_t = self.params.temperature_amplitude;
+        let f_continental = if delta_t > 0.0 {
+            1.0 + GAMMA * (delta_t / DT0).ln()
+        } else {
+            1.0
+        };
+
+        // 4. Итоговая формула Атласова
+        let xi_a = xi_0 * k_fire * f_continental;
+
+        // Учитываем время (корень из года для многолетнего процесса)
+        let depth = xi_a * (year as f64).sqrt();
 
         Ok(depth.max(0.0))
     }
@@ -63,14 +106,24 @@ impl ThawDepthCalculator {
     }
 
     /// Расчет глубины сезонного протаивания (активный слой)
+    /// Это глубина протаивания за один сезон (year = 1)
     pub fn active_layer_depth(&self) -> Result<f64> {
-        let k = self.params.soil_type.thermal_conductivity();
-        let temp_amplitude = self.params.air_temp.abs();
+        self.calculate(1)
+    }
 
-        // Упрощенная формула для активного слоя
-        let depth = 0.5 * (k * temp_amplitude).sqrt();
+    /// Получить коэффициент K_fire для текущих параметров
+    pub fn k_fire(&self) -> f64 {
+        (BETA * (1.0 - self.params.vegetation_cover)).exp()
+    }
 
-        Ok(depth.max(0.3).min(3.0)) // Типично 0.3-3.0 м
+    /// Получить функцию континентальности для текущих параметров
+    pub fn f_continental(&self) -> f64 {
+        let delta_t = self.params.temperature_amplitude;
+        if delta_t > 0.0 {
+            1.0 + GAMMA * (delta_t / DT0).ln()
+        } else {
+            1.0
+        }
     }
 }
 
@@ -78,6 +131,57 @@ impl ThawDepthCalculator {
 mod tests {
     use super::*;
     use thermokarst_core::SoilType;
+
+    #[test]
+    fn test_atlasov_formula_basic() {
+        let mut params = EnvironmentParams::default();
+        params.air_temp = 10.0;
+        params.warm_season_days = 100;
+        params.ice_content = 0.3;
+        params.vegetation_cover = 0.8;
+        params.temperature_amplitude = 88.0;
+
+        let calc = ThawDepthCalculator::new(params);
+        let depth = calc.calculate(1).unwrap();
+
+        // Глубина должна быть положительной и разумной
+        assert!(depth > 0.0);
+        assert!(depth < 10.0);
+    }
+
+    #[test]
+    fn test_k_fire_coefficient() {
+        let mut params = EnvironmentParams::default();
+
+        // Полный покров (V=1.0) → K_fire ≈ 1.0
+        params.vegetation_cover = 1.0;
+        let calc = ThawDepthCalculator::new(params.clone());
+        let k_fire_full = calc.k_fire();
+        assert!((k_fire_full - 1.0).abs() < 0.01);
+
+        // Нет покрова (V=0.0) → K_fire ≈ 1.57
+        params.vegetation_cover = 0.0;
+        let calc = ThawDepthCalculator::new(params);
+        let k_fire_bare = calc.k_fire();
+        assert!((k_fire_bare - 1.568).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_continental_function() {
+        let mut params = EnvironmentParams::default();
+
+        // Базовая амплитуда (40°C) → f = 1.0
+        params.temperature_amplitude = 40.0;
+        let calc = ThawDepthCalculator::new(params.clone());
+        let f_base = calc.f_continental();
+        assert!((f_base - 1.0).abs() < 0.001);
+
+        // Якутская амплитуда (88°C) → f ≈ 1.095
+        params.temperature_amplitude = 88.0;
+        let calc = ThawDepthCalculator::new(params);
+        let f_yakutia = calc.f_continental();
+        assert!(f_yakutia > 1.08 && f_yakutia < 1.11);
+    }
 
     #[test]
     fn test_thaw_depth_increases_with_time() {
@@ -93,10 +197,10 @@ mod tests {
     #[test]
     fn test_vegetation_reduces_thaw() {
         let mut params1 = EnvironmentParams::default();
-        params1.vegetation_cover = 0.0;
+        params1.vegetation_cover = 0.0; // Гарь
 
         let mut params2 = EnvironmentParams::default();
-        params2.vegetation_cover = 0.8;
+        params2.vegetation_cover = 0.9; // Густой лес
 
         let calc1 = ThawDepthCalculator::new(params1);
         let calc2 = ThawDepthCalculator::new(params2);
@@ -104,6 +208,7 @@ mod tests {
         let depth1 = calc1.calculate(5).unwrap();
         let depth2 = calc2.calculate(5).unwrap();
 
+        // Гарь протаивает глубже
         assert!(depth1 > depth2);
     }
 }

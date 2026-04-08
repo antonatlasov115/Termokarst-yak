@@ -145,8 +145,8 @@ impl UncertaintyAnalyzer {
     where
         F: Fn(&EnvironmentParams) -> Result<f64> + Sync,
     {
-        use rand::Rng;
         use rand::SeedableRng;
+        use rand_distr::{Distribution, Uniform};
 
         // Параллельное выполнение симуляций
         let results: Vec<f64> = (0..self.uncertainty_params.n_simulations)
@@ -158,27 +158,27 @@ impl UncertaintyAnalyzer {
                 let mut perturbed = base_params.clone();
 
                 // Возмущение температуры
-                let temp_factor = 1.0
-                    + rng.gen_range(
-                        -self.uncertainty_params.air_temp_uncertainty / 100.0
-                            ..self.uncertainty_params.air_temp_uncertainty / 100.0,
-                    );
+                let temp_dist = Uniform::new(
+                    -self.uncertainty_params.air_temp_uncertainty / 100.0,
+                    self.uncertainty_params.air_temp_uncertainty / 100.0,
+                );
+                let temp_factor = 1.0 + temp_dist.sample(&mut rng);
                 perturbed.air_temp *= temp_factor;
 
                 // Возмущение льдистости
-                let ice_factor = 1.0
-                    + rng.gen_range(
-                        -self.uncertainty_params.ice_content_uncertainty / 100.0
-                            ..self.uncertainty_params.ice_content_uncertainty / 100.0,
-                    );
+                let ice_dist = Uniform::new(
+                    -self.uncertainty_params.ice_content_uncertainty / 100.0,
+                    self.uncertainty_params.ice_content_uncertainty / 100.0,
+                );
+                let ice_factor = 1.0 + ice_dist.sample(&mut rng);
                 perturbed.ice_content = (perturbed.ice_content * ice_factor).clamp(0.1, 0.95);
 
                 // Возмущение растительности
-                let veg_factor = 1.0
-                    + rng.gen_range(
-                        -self.uncertainty_params.vegetation_uncertainty / 100.0
-                            ..self.uncertainty_params.vegetation_uncertainty / 100.0,
-                    );
+                let veg_dist = Uniform::new(
+                    -self.uncertainty_params.vegetation_uncertainty / 100.0,
+                    self.uncertainty_params.vegetation_uncertainty / 100.0,
+                );
+                let veg_factor = 1.0 + veg_dist.sample(&mut rng);
                 perturbed.vegetation_cover =
                     (perturbed.vegetation_cover * veg_factor).clamp(0.0, 1.0);
 
@@ -188,7 +188,7 @@ impl UncertaintyAnalyzer {
             .collect();
 
         if results.is_empty() {
-            return Err(ThermokarstError::SimulationFailed(
+            return Err(ThermokarstError::InvalidParameters(
                 "Все симуляции Монте-Карло завершились с ошибкой".to_string(),
             ));
         }

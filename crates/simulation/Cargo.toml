@@ -12,6 +12,7 @@ serde.workspace = true
 anyhow.workspace = true
 plotters = { workspace = true, optional = true }
 rand = "0.10.0"
+rand_distr = "0.6.0"
 
 [features]
 default = ["visualization"]

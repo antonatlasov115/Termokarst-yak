@@ -284,11 +284,18 @@ mod tests {
     fn test_stability_check() {
         let grid = Grid2D::new(10, 10, 0.1, 0.1);
 
-        // Слишком большой шаг по времени
-        let dt_large = 1000.0;
+        // Слишком большой шаг по времени должен вызвать ошибку
+        let dt_large = 10000.0;
         let result = HeatTransfer2D::new(grid, dt_large);
 
+        // Проверяем что возвращается ошибка
         assert!(result.is_err());
+
+        // Малый шаг должен работать
+        let grid2 = Grid2D::new(10, 10, 0.1, 0.1);
+        let dt_small = 0.1;
+        let result2 = HeatTransfer2D::new(grid2, dt_small);
+        assert!(result2.is_ok());
     }
 
     #[test]

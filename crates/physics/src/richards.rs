@@ -276,10 +276,10 @@ impl RichardsCalculator {
         (jup, jdn)
     }
 
-    /// Рассчитать граничный поток
+    /// Рассчитать граничный поток (Dirichlet BC)
     ///
-    /// Для граничных условий Дирихле или Неймана
-    pub fn boundary_flux(
+    /// Для граничных условий с заданным давлением
+    pub fn boundary_flux_dirichlet(
         &self,
         auxvar_internal: &RichardsAuxVar,
         material_internal: &MaterialProperties,
@@ -300,6 +300,45 @@ impl RichardsCalculator {
         let v_darcy = dq * auxvar_internal.kvr * dphi;
 
         v_darcy * area * auxvar_internal.density
+    }
+
+    /// Рассчитать граничный поток (Neumann BC)
+    ///
+    /// Для граничных условий с заданным потоком
+    ///
+    /// # Аргументы
+    /// * `flux` - заданный поток (kg/m²/s)
+    /// * `area` - площадь границы (m²)
+    ///
+    /// # Возвращает
+    /// Массовый поток (kg/s)
+    pub fn boundary_flux_neumann(&self, flux: f64, area: f64) -> f64 {
+        flux * area
+    }
+
+    /// Применить источник/сток массы
+    ///
+    /// # Аргументы
+    /// * `rate` - скорость источника/стока (kg/s)
+    ///   Положительное значение - источник (добавление воды)
+    ///   Отрицательное значение - сток (удаление воды)
+    ///
+    /// # Возвращает
+    /// Массовый поток (kg/s)
+    pub fn apply_source_sink(&self, rate: f64) -> f64 {
+        rate
+    }
+
+    /// Применить объемный источник/сток
+    ///
+    /// # Аргументы
+    /// * `volumetric_rate` - объемный расход (m³/s)
+    /// * `density` - плотность жидкости (kg/m³)
+    ///
+    /// # Возвращает
+    /// Массовый поток (kg/s)
+    pub fn apply_volumetric_source_sink(&self, volumetric_rate: f64, density: f64) -> f64 {
+        volumetric_rate * density
     }
 }
 
@@ -439,7 +478,7 @@ mod tests {
     }
 
     #[test]
-    fn test_boundary_flux() {
+    fn test_boundary_flux_dirichlet() {
         let params = RichardsParameters::default();
         let calc = RichardsCalculator::new(params);
 
@@ -458,9 +497,52 @@ mod tests {
         let area = 1.0;
         let distance = 0.5;
 
-        let flux = calc.boundary_flux(&auxvar, &material, pressure_boundary, area, distance);
+        let flux =
+            calc.boundary_flux_dirichlet(&auxvar, &material, pressure_boundary, area, distance);
 
         // Поток должен быть положительным (из области наружу)
         assert!(flux > 0.0);
+    }
+
+    #[test]
+    fn test_boundary_flux_neumann() {
+        let params = RichardsParameters::default();
+        let calc = RichardsCalculator::new(params);
+
+        let flux_density = 0.001; // kg/m²/s (инфильтрация)
+        let area = 1.0; // m²
+
+        let flux = calc.boundary_flux_neumann(flux_density, area);
+
+        assert_eq!(flux, 0.001); // kg/s
+    }
+
+    #[test]
+    fn test_source_sink() {
+        let params = RichardsParameters::default();
+        let calc = RichardsCalculator::new(params);
+
+        // Источник (положительный)
+        let source_rate = 0.1; // kg/s
+        let source_flux = calc.apply_source_sink(source_rate);
+        assert_eq!(source_flux, 0.1);
+
+        // Сток (отрицательный)
+        let sink_rate = -0.05; // kg/s
+        let sink_flux = calc.apply_source_sink(sink_rate);
+        assert_eq!(sink_flux, -0.05);
+    }
+
+    #[test]
+    fn test_volumetric_source_sink() {
+        let params = RichardsParameters::default();
+        let calc = RichardsCalculator::new(params);
+
+        let volumetric_rate = 0.001; // m³/s
+        let density = 1000.0; // kg/m³
+
+        let mass_flux = calc.apply_volumetric_source_sink(volumetric_rate, density);
+
+        assert_eq!(mass_flux, 1.0); // kg/s
     }
 }

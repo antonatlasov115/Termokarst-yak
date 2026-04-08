@@ -1,5 +1,6 @@
 //! Физические расчеты для термокарстовых процессов
 
+pub mod boundary_conditions;
 pub mod frozen_ground;
 pub mod heat_transfer;
 pub mod heat_transfer_2d;
@@ -13,6 +14,7 @@ pub mod thaw;
 pub mod thawing_index;
 pub mod thermal_conductivity;
 
+pub use boundary_conditions::*;
 pub use frozen_ground::*;
 pub use heat_transfer::*;
 pub use heat_transfer_2d::*;

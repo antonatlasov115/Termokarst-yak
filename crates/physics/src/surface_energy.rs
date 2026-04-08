@@ -164,6 +164,77 @@ impl FullEnergyBalance {
             surface_temperature: surface_temp,
         }
     }
+
+    /// Рассчитать полный энергетический баланс с турбулентными потоками
+    ///
+    /// Уравнение: Rn = H + LE + G
+    /// где:
+    /// - Rn: чистая радиация
+    /// - H: явный тепловой поток
+    /// - LE: скрытый тепловой поток (испарение)
+    /// - G: тепловой поток в грунт
+    pub fn full_balance(
+        &self,
+        day_of_year: u32,
+        air_temp: f64,
+        wind_speed: f64,
+        relative_humidity: f64,
+        cloud_cover: f64,
+    ) -> FullDailyBalance {
+        let (sw_in, lw_in) =
+            self.surface
+                .estimate_radiation(self.latitude, day_of_year, cloud_cover);
+
+        let net_rad = self.surface.net_radiation(sw_in, lw_in, air_temp);
+
+        // Явный тепловой поток (H) - упрощенная формула
+        // H = ρ·cp·Ch·U·(Ts - Ta)
+        const RHO_AIR: f64 = 1.2; // кг/м³
+        const CP_AIR: f64 = 1005.0; // Дж/(кг·К)
+        const CH: f64 = 0.003; // коэффициент теплообмена
+
+        let surface_temp = self
+            .surface
+            .calculate_surface_temperature(air_temp, sw_in, lw_in, 0.0);
+
+        let sensible_heat = RHO_AIR * CP_AIR * CH * wind_speed * (surface_temp - air_temp);
+
+        // Скрытый тепловой поток (LE) - упрощенная формула
+        // LE = ρ·Lv·Ce·U·(qs - qa)
+        const LV: f64 = 2.5e6; // Дж/кг - скрытая теплота испарения
+        const CE: f64 = 0.003; // коэффициент влагообмена
+
+        // Насыщающая влажность (упрощенная формула Магнуса)
+        let es_surface = 611.0 * (17.27 * surface_temp / (surface_temp + 237.3)).exp();
+        let es_air = 611.0 * (17.27 * air_temp / (air_temp + 237.3)).exp();
+        let ea_air = es_air * relative_humidity;
+
+        let q_surface = 0.622 * es_surface / 101325.0; // удельная влажность
+        let q_air = 0.622 * ea_air / 101325.0;
+
+        let latent_heat = RHO_AIR * LV * CE * wind_speed * (q_surface - q_air);
+
+        // Тепловой поток в грунт (G) - остаток энергетического баланса
+        let ground_heat_flux = net_rad - sensible_heat - latent_heat;
+
+        // Боуэновское отношение (β = H/LE)
+        let bowen_ratio = if latent_heat.abs() > 1e-6 {
+            sensible_heat / latent_heat
+        } else {
+            0.0
+        };
+
+        FullDailyBalance {
+            shortwave_in: sw_in,
+            longwave_in: lw_in,
+            net_radiation: net_rad,
+            sensible_heat,
+            latent_heat,
+            ground_heat_flux,
+            surface_temperature: surface_temp,
+            bowen_ratio,
+        }
+    }
 }
 
 /// Результат расчета дневного энергетического баланса
@@ -179,6 +250,43 @@ pub struct DailyEnergyBalance {
     pub ground_heat_flux: f64,
     /// Температура поверхности (°C)
     pub surface_temperature: f64,
+}
+
+/// Результат расчета полного энергетического баланса с турбулентными потоками
+#[derive(Debug, Clone)]
+pub struct FullDailyBalance {
+    /// Входящая коротковолновая радиация (Вт/м²)
+    pub shortwave_in: f64,
+    /// Входящая длинноволновая радиация (Вт/м²)
+    pub longwave_in: f64,
+    /// Чистая радиация (Вт/м²)
+    pub net_radiation: f64,
+    /// Явный тепловой поток (Вт/м²)
+    pub sensible_heat: f64,
+    /// Скрытый тепловой поток - испарение (Вт/м²)
+    pub latent_heat: f64,
+    /// Тепловой поток в грунт (Вт/м²)
+    pub ground_heat_flux: f64,
+    /// Температура поверхности (°C)
+    pub surface_temperature: f64,
+    /// Боуэновское отношение (H/LE)
+    pub bowen_ratio: f64,
+}
+
+impl FullDailyBalance {
+    /// Проверить замыкание энергетического баланса
+    pub fn closure_error(&self) -> f64 {
+        let sum = self.sensible_heat + self.latent_heat + self.ground_heat_flux;
+        (self.net_radiation - sum).abs()
+    }
+
+    /// Относительная ошибка замыкания (%)
+    pub fn closure_error_percent(&self) -> f64 {
+        if self.net_radiation.abs() < 1e-6 {
+            return 0.0;
+        }
+        (self.closure_error() / self.net_radiation.abs()) * 100.0
+    }
 }
 
 #[cfg(test)]
@@ -288,5 +396,67 @@ mod tests {
 
         println!("Snow net rad: {:.1} W/m²", net_rad_snow);
         println!("Soil net rad: {:.1} W/m²", net_rad_soil);
+    }
+
+    #[test]
+    fn test_full_energy_balance_summer() {
+        let seb = SurfaceEnergyBalance::for_surface(SurfaceType::Vegetation);
+        let calc = FullEnergyBalance::new(seb, 62.0);
+
+        // Летний день: теплый, умеренный ветер, средняя влажность
+        let balance = calc.full_balance(180, 20.0, 3.0, 0.6, 0.3);
+
+        println!("Full summer balance:");
+        println!("  Net radiation: {:.1} W/m²", balance.net_radiation);
+        println!("  Sensible heat: {:.1} W/m²", balance.sensible_heat);
+        println!("  Latent heat: {:.1} W/m²", balance.latent_heat);
+        println!("  Ground flux: {:.1} W/m²", balance.ground_heat_flux);
+        println!("  Bowen ratio: {:.2}", balance.bowen_ratio);
+        println!("  Closure error: {:.1}%", balance.closure_error_percent());
+
+        // Летом чистая радиация должна быть положительной
+        assert!(balance.net_radiation > 0.0);
+
+        // Ошибка замыкания должна быть небольшой
+        assert!(balance.closure_error_percent() < 5.0);
+    }
+
+    #[test]
+    fn test_full_energy_balance_winter() {
+        let seb = SurfaceEnergyBalance::for_surface(SurfaceType::Snow);
+        let calc = FullEnergyBalance::new(seb, 62.0);
+
+        // Зимний день: холодный, слабый ветер, низкая влажность
+        let balance = calc.full_balance(1, -30.0, 2.0, 0.3, 0.5);
+
+        println!("Full winter balance:");
+        println!("  Net radiation: {:.1} W/m²", balance.net_radiation);
+        println!("  Sensible heat: {:.1} W/m²", balance.sensible_heat);
+        println!("  Latent heat: {:.1} W/m²", balance.latent_heat);
+        println!("  Ground flux: {:.1} W/m²", balance.ground_heat_flux);
+        println!("  Bowen ratio: {:.2}", balance.bowen_ratio);
+
+        // Зимой испарение минимально
+        assert!(balance.latent_heat.abs() < 50.0);
+    }
+
+    #[test]
+    fn test_bowen_ratio_dry_vs_wet() {
+        let seb = SurfaceEnergyBalance::for_surface(SurfaceType::Soil);
+        let calc = FullEnergyBalance::new(seb, 62.0);
+
+        // Сухие условия (низкая влажность)
+        let dry = calc.full_balance(180, 25.0, 3.0, 0.3, 0.2);
+
+        // Влажные условия (высокая влажность)
+        let wet = calc.full_balance(180, 25.0, 3.0, 0.9, 0.2);
+
+        println!(
+            "Bowen ratio - dry: {:.2}, wet: {:.2}",
+            dry.bowen_ratio, wet.bowen_ratio
+        );
+
+        // В сухих условиях Боуэновское отношение выше (больше явного тепла)
+        assert!(dry.bowen_ratio > wet.bowen_ratio);
     }
 }

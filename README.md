@@ -348,16 +348,15 @@ cargo test validation_atlasov
   year = {2026},
   version = {0.1.0},
   url = {https://github.com/your-repo/termokarst-yak}
-}
-```
+}```
 
 ## 📞 Контакты
 
 Для вопросов и сотрудничества:
-- Институт мерзлотоведения СО РАН (Якутск)
-- Email: [your-email]
-- GitHub Issues: [link]
+- taas algorithms 
+- Email: antonatlasov115@gmail.com
+- 89963178892
 
 ## Лицензия
 
-MIT
+MIT 

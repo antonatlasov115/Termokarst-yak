@@ -195,8 +195,91 @@ impl RichardsNewtonSolver {
 
     /// Решить систему на один временной шаг
     fn solve_timestep(&mut self, initial_pressures: na::DVector<f64>) -> na::DVector<f64> {
-        let residual_fn = |p: &na::DVector<f64>| self.compute_residual(p);
-        let jacobian_fn = |p: &na::DVector<f64>| self.compute_jacobian(p);
+        // Клонируем необходимые данные для замыканий
+        let grid = Grid1D {
+            n_cells: self.grid.n_cells,
+            cell_size: self.grid.cell_size,
+            area: self.grid.area,
+        };
+        let richards_calc = RichardsCalculator::new(self.richards_calc.params);
+        let materials = self.materials.clone();
+        let mut auxvars = self.auxvars.clone();
+
+        let mut residual_fn = |p: &na::DVector<f64>| {
+            // Обновить auxvars
+            for i in 0..grid.n_cells {
+                auxvars[i].pressure = p[i];
+                update_auxvar_properties(&mut auxvars[i]);
+            }
+
+            let mut residual = na::DVector::zeros(grid.n_cells);
+
+            for i in 0..grid.n_cells {
+                let accum = richards_calc.accumulation(&auxvars[i], &materials[i]);
+                residual[i] = accum;
+
+                if i > 0 {
+                    let distance = [grid.cell_size / 2.0, grid.cell_size / 2.0, grid.cell_size];
+                    let flux = richards_calc.flux(
+                        &auxvars[i - 1],
+                        &materials[i - 1],
+                        &auxvars[i],
+                        &materials[i],
+                        grid.area,
+                        &distance,
+                    );
+                    residual[i] -= flux;
+                } else {
+                    let infiltration_rate = 0.001;
+                    let boundary_flux =
+                        richards_calc.boundary_flux_neumann(infiltration_rate, grid.area);
+                    residual[i] -= boundary_flux;
+                }
+
+                if i < grid.n_cells - 1 {
+                    let distance = [grid.cell_size / 2.0, grid.cell_size / 2.0, grid.cell_size];
+                    let flux = richards_calc.flux(
+                        &auxvars[i],
+                        &materials[i],
+                        &auxvars[i + 1],
+                        &materials[i + 1],
+                        grid.area,
+                        &distance,
+                    );
+                    residual[i] += flux;
+                } else {
+                    let gravity_flux = -materials[i].permeability
+                        * auxvars[i].relative_permeability
+                        / auxvars[i].viscosity
+                        * auxvars[i].density
+                        * richards_calc.params.gravity
+                        * grid.area;
+                    residual[i] += gravity_flux;
+                }
+            }
+
+            residual
+        };
+
+        let mut jacobian_fn = |p: &na::DVector<f64>| {
+            let n = grid.n_cells;
+            let mut jacobian = na::DMatrix::zeros(n, n);
+            let eps = 1e-6;
+
+            let f0 = residual_fn(p);
+
+            for j in 0..n {
+                let mut p_perturbed = p.clone();
+                p_perturbed[j] += eps;
+                let f_perturbed = residual_fn(&p_perturbed);
+
+                for i in 0..n {
+                    jacobian[(i, j)] = (f_perturbed[i] - f0[i]) / eps;
+                }
+            }
+
+            jacobian
+        };
 
         let result = self
             .newton_solver
@@ -210,6 +293,39 @@ impl RichardsNewtonSolver {
 
         result.solution
     }
+}
+
+/// Обновить свойства для одной ячейки (упрощенная модель)
+fn update_auxvar_properties(auxvar: &mut RichardsAuxVar) {
+    // Упрощенная модель: насыщенность зависит от давления
+    // S = 1 для P > 0, S = exp(P/P0) для P < 0
+    const P0: f64 = 1e4; // Характерное давление
+
+    if auxvar.pressure >= 0.0 {
+        auxvar.saturation = 1.0;
+        auxvar.dsat_dp = 0.0;
+    } else {
+        auxvar.saturation = (auxvar.pressure / P0).exp();
+        auxvar.dsat_dp = auxvar.saturation / P0;
+    }
+
+    // Относительная проницаемость (модель Corey)
+    let s_eff = auxvar.saturation;
+    auxvar.relative_permeability = s_eff.powi(3);
+    auxvar.dkvr_dp = if auxvar.pressure >= 0.0 {
+        0.0
+    } else {
+        3.0 * s_eff.powi(2) * auxvar.dsat_dp
+    };
+
+    // kvr = k/μ * kr
+    auxvar.kvr = auxvar.relative_permeability / auxvar.viscosity;
+    auxvar.dkvr_dp = auxvar.dkvr_dp / auxvar.viscosity;
+
+    // Плотность (слабо сжимаемая жидкость)
+    const COMPRESSIBILITY: f64 = 4.5e-10; // 1/Pa
+    auxvar.density = 1000.0 * (1.0 + COMPRESSIBILITY * auxvar.pressure);
+    auxvar.dden_dp = 1000.0 * COMPRESSIBILITY;
 }
 
 fn main() {

@@ -104,14 +104,18 @@ impl RichardsNewtonSolver {
     /// Вычислить невязку F(P) = 0
     fn compute_residual(&mut self, pressures: &na::DVector<f64>) -> na::DVector<f64> {
         self.update_auxvars(pressures);
+        self.compute_residual_from_auxvars(&self.auxvars.clone())
+    }
 
+    /// Вычислить невязку из готовых auxvars
+    fn compute_residual_from_auxvars(&self, auxvars: &[RichardsAuxVar]) -> na::DVector<f64> {
         let mut residual = na::DVector::zeros(self.grid.n_cells);
 
         for i in 0..self.grid.n_cells {
             // Член аккумуляции
             let accum = self
                 .richards_calc
-                .accumulation(&self.auxvars[i], &self.materials[i]);
+                .accumulation(&auxvars[i], &self.materials[i]);
             residual[i] = accum;
 
             // Потоки между ячейками
@@ -123,9 +127,9 @@ impl RichardsNewtonSolver {
                     self.grid.cell_size,
                 ];
                 let flux = self.richards_calc.flux(
-                    &self.auxvars[i - 1],
+                    &auxvars[i - 1],
                     &self.materials[i - 1],
-                    &self.auxvars[i],
+                    &auxvars[i],
                     &self.materials[i],
                     self.grid.area,
                     &distance,
@@ -148,9 +152,9 @@ impl RichardsNewtonSolver {
                     self.grid.cell_size,
                 ];
                 let flux = self.richards_calc.flux(
-                    &self.auxvars[i],
+                    &auxvars[i],
                     &self.materials[i],
-                    &self.auxvars[i + 1],
+                    &auxvars[i + 1],
                     &self.materials[i + 1],
                     self.grid.area,
                     &distance,
@@ -160,9 +164,9 @@ impl RichardsNewtonSolver {
                 // Нижняя граница: свободный дренаж
                 // Поток = -K * kr * ρ * g
                 let gravity_flux = -self.materials[i].permeability
-                    * self.auxvars[i].relative_permeability
-                    / self.auxvars[i].viscosity
-                    * self.auxvars[i].density
+                    * auxvars[i].relative_permeability
+                    / auxvars[i].viscosity
+                    * auxvars[i].density
                     * self.richards_calc.params.gravity
                     * self.grid.area;
                 residual[i] += gravity_flux;
@@ -205,7 +209,7 @@ impl RichardsNewtonSolver {
         let materials = self.materials.clone();
         let mut auxvars = self.auxvars.clone();
 
-        let mut residual_fn = |p: &na::DVector<f64>| {
+        let residual_fn = move |p: &na::DVector<f64>| {
             // Обновить auxvars
             for i in 0..grid.n_cells {
                 auxvars[i].pressure = p[i];
@@ -261,29 +265,37 @@ impl RichardsNewtonSolver {
             residual
         };
 
-        let mut jacobian_fn = |p: &na::DVector<f64>| {
-            let n = grid.n_cells;
-            let mut jacobian = na::DMatrix::zeros(n, n);
-            let eps = 1e-6;
+        // Используем численное дифференцирование для якобиана
+        let result =
+            self.newton_solver
+                .solve(initial_pressures, residual_fn, |p: &na::DVector<f64>| {
+                    // Численный якобиан
+                    let n = self.grid.n_cells;
+                    let mut jacobian = na::DMatrix::zeros(n, n);
+                    let eps = 1e-6;
 
-            let f0 = residual_fn(p);
+                    // Вычисляем невязку в текущей точке
+                    let mut auxvars_base = self.auxvars.clone();
+                    for i in 0..n {
+                        auxvars_base[i].pressure = p[i];
+                        update_auxvar_properties(&mut auxvars_base[i]);
+                    }
+                    let f0 = self.compute_residual_from_auxvars(&auxvars_base);
 
-            for j in 0..n {
-                let mut p_perturbed = p.clone();
-                p_perturbed[j] += eps;
-                let f_perturbed = residual_fn(&p_perturbed);
+                    // Вычисляем производные
+                    for j in 0..n {
+                        let mut auxvars_pert = auxvars_base.clone();
+                        auxvars_pert[j].pressure += eps;
+                        update_auxvar_properties(&mut auxvars_pert[j]);
+                        let f_pert = self.compute_residual_from_auxvars(&auxvars_pert);
 
-                for i in 0..n {
-                    jacobian[(i, j)] = (f_perturbed[i] - f0[i]) / eps;
-                }
-            }
+                        for i in 0..n {
+                            jacobian[(i, j)] = (f_pert[i] - f0[i]) / eps;
+                        }
+                    }
 
-            jacobian
-        };
-
-        let result = self
-            .newton_solver
-            .solve(initial_pressures, residual_fn, jacobian_fn);
+                    jacobian
+                });
 
         println!("Newton solver:");
         println!("  Итераций: {}", result.iterations);

@@ -8,17 +8,22 @@ pub struct StabilityAnalyzer;
 impl StabilityAnalyzer {
     /// Определение стадии развития термокарста
     pub fn determine_stage(lens: &ThermokarstLens) -> ThermokarstStage {
-        let aspect_ratio = lens.aspect_ratio();
         let age = lens.age;
 
-        // Критерии для определения стадии
-        if age < 5 || lens.growth_rate > 10.0 {
+        // Инициация: молодое и пока еще маленькое образование
+        if age < 5 && lens.volume < 10.0 {
             ThermokarstStage::Initiation
-        } else if lens.growth_rate > 1.0 && aspect_ratio < 0.4 {
+        }
+        // Активное развитие: линза уверенно растет в объеме
+        else if lens.growth_rate > 1.0 {
             ThermokarstStage::ActiveDevelopment
-        } else if lens.growth_rate < 1.0 && lens.growth_rate > -0.5 {
+        }
+        // Стабилизация: рост почти остановился
+        else if lens.growth_rate >= -0.5 && lens.growth_rate <= 1.0 {
             ThermokarstStage::Stabilization
-        } else {
+        }
+        // Деградация: линза заплывает/уменьшается в объеме
+        else {
             ThermokarstStage::Degradation
         }
     }
@@ -113,6 +118,39 @@ mod tests {
         let stage = StabilityAnalyzer::determine_stage(&lens);
 
         assert_eq!(stage, ThermokarstStage::Initiation);
+    }
+
+    #[test]
+    fn test_old_large_fast_growing_lens_is_active() {
+        // Столетнее озеро с большим объемом и высокой скоростью роста
+        let mut lens = ThermokarstLens::new(5.0, 15.0, 100);
+        lens.volume = 700.0;
+        lens.growth_rate = 12.0; // Высокая скорость роста
+
+        let stage = StabilityAnalyzer::determine_stage(&lens);
+
+        // Должно быть ActiveDevelopment, а не Initiation!
+        assert_eq!(stage, ThermokarstStage::ActiveDevelopment);
+    }
+
+    #[test]
+    fn test_slow_growing_lens_is_stabilizing() {
+        let mut lens = ThermokarstLens::new(3.0, 10.0, 50);
+        lens.growth_rate = 0.5; // Медленный рост
+
+        let stage = StabilityAnalyzer::determine_stage(&lens);
+
+        assert_eq!(stage, ThermokarstStage::Stabilization);
+    }
+
+    #[test]
+    fn test_shrinking_lens_is_degrading() {
+        let mut lens = ThermokarstLens::new(2.0, 8.0, 80);
+        lens.growth_rate = -1.0; // Уменьшается
+
+        let stage = StabilityAnalyzer::determine_stage(&lens);
+
+        assert_eq!(stage, ThermokarstStage::Degradation);
     }
 
     #[test]

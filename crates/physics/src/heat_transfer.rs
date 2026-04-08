@@ -1,6 +1,6 @@
 //! Расчеты теплопереноса в грунте
 
-use thermokarst_core::{EnvironmentParams, Result};
+use thermokarst_core::EnvironmentParams;
 
 /// Калькулятор теплопереноса
 pub struct HeatTransferCalculator {
@@ -15,8 +15,8 @@ impl HeatTransferCalculator {
     /// Расчет теплового потока (Вт/м²)
     pub fn heat_flux(&self) -> f64 {
         let k = self.params.soil_type.thermal_conductivity();
-        let temp_gradient = (self.params.air_temp - self.params.permafrost_temp)
-            / self.params.permafrost_depth;
+        let temp_gradient =
+            (self.params.air_temp - self.params.permafrost_temp) / self.params.permafrost_depth;
 
         k * temp_gradient
     }

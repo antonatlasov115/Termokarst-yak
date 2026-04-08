@@ -1,24 +1,18 @@
 //! Анализ спутниковых данных для детекции термокарста
 
-use anyhow::{Result, Context};
+use anyhow::Result;
 use ndarray::Array2;
-use std::path::Path;
 
 /// Анализатор спутниковых снимков
 pub struct SatelliteAnalyzer {
-    /// Размеры изображения (width, height)
-    dimensions: (usize, usize),
     /// Разрешение в метрах на пиксель
     resolution_m: f64,
 }
 
 impl SatelliteAnalyzer {
     /// Создать анализатор с заданными параметрами
-    pub fn new(width: usize, height: usize, resolution_m: f64) -> Self {
-        Self {
-            dimensions: (width, height),
-            resolution_m,
-        }
+    pub fn new(_width: usize, _height: usize, resolution_m: f64) -> Self {
+        Self { resolution_m }
     }
 
     /// Рассчитать NDVI (Normalized Difference Vegetation Index)
@@ -307,25 +301,31 @@ mod tests {
 
     #[test]
     fn test_temporal_analysis() {
-        let previous = vec![
-            WaterBody {
-                center: (10, 10),
-                pixel_count: 100,
-                area_m2: 10000.0,
-                diameter_m: 100.0,
-                bbox: BoundingBox { min_x: 5, max_x: 15, min_y: 5, max_y: 15 },
+        let previous = vec![WaterBody {
+            center: (10, 10),
+            pixel_count: 100,
+            area_m2: 10000.0,
+            diameter_m: 100.0,
+            bbox: BoundingBox {
+                min_x: 5,
+                max_x: 15,
+                min_y: 5,
+                max_y: 15,
             },
-        ];
+        }];
 
-        let current = vec![
-            WaterBody {
-                center: (10, 10),
-                pixel_count: 150,
-                area_m2: 15000.0,
-                diameter_m: 120.0,
-                bbox: BoundingBox { min_x: 5, max_x: 15, min_y: 5, max_y: 15 },
+        let current = vec![WaterBody {
+            center: (10, 10),
+            pixel_count: 150,
+            area_m2: 15000.0,
+            diameter_m: 120.0,
+            bbox: BoundingBox {
+                min_x: 5,
+                max_x: 15,
+                min_y: 5,
+                max_y: 15,
             },
-        ];
+        }];
 
         let analysis = SatelliteAnalyzer::temporal_analysis(&current, &previous, 5.0);
 

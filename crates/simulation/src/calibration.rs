@@ -1,7 +1,7 @@
 //! Калибровка модели по реальным данным наблюдений
 
-use thermokarst_core::{dataset::ObservationDataset, EnvironmentParams, Result, SoilType};
 use crate::{SimulationConfig, SimulationEngine};
+use thermokarst_core::{dataset::ObservationDataset, EnvironmentParams, Result, SoilType};
 
 /// Калибратор параметров модели
 pub struct ModelCalibrator {

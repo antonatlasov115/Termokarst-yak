@@ -1,9 +1,11 @@
 //! Базовые типы и трейты для моделирования термокарстовых образований в Якутии
 
-pub mod types;
-pub mod error;
 pub mod dataset;
+pub mod error;
+pub mod types;
+pub mod validation;
 
-pub use types::*;
-pub use error::*;
 pub use dataset::*;
+pub use error::*;
+pub use types::*;
+pub use validation::*;

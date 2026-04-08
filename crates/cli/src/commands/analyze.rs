@@ -11,8 +11,7 @@ pub fn run(input: PathBuf) -> Result<()> {
 
     // Загрузка данных
     let data = std::fs::read_to_string(&input).context("Ошибка чтения файла")?;
-    let result: SimulationResult =
-        serde_json::from_str(&data).context("Ошибка парсинга JSON")?;
+    let result: SimulationResult = serde_json::from_str(&data).context("Ошибка парсинга JSON")?;
 
     println!("✅ Данные загружены\n");
 
@@ -24,7 +23,10 @@ pub fn run(input: PathBuf) -> Result<()> {
 
     // Параметры среды
     println!("🌍 Параметры среды:");
-    println!("  Температура воздуха: {:.1}°C", result.environment.air_temp);
+    println!(
+        "  Температура воздуха: {:.1}°C",
+        result.environment.air_temp
+    );
     println!(
         "  Температура мерзлоты: {:.1}°C",
         result.environment.permafrost_temp
@@ -67,7 +69,10 @@ pub fn run(input: PathBuf) -> Result<()> {
 
         println!("  Оценка стабильности: {:.2}/1.00", stability_score);
         println!("  Риск обрушения: {:.1}%", collapse_risk * 100.0);
-        println!("  Геометрически стабильна: {}", if is_stable { "Да" } else { "Нет" });
+        println!(
+            "  Геометрически стабильна: {}",
+            if is_stable { "Да" } else { "Нет" }
+        );
         println!("  Соотношение Г/Д: {:.3}", last.aspect_ratio());
 
         if let Some(years) = StabilityAnalyzer::time_to_stabilization(last) {

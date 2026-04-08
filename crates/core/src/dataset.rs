@@ -1,8 +1,8 @@
 //! Модуль для работы с реальными данными наблюдений
 
+use crate::{Result, ThermokarstError};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use crate::{Result, ThermokarstError};
 
 /// Формат данных наблюдений
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,11 +54,10 @@ pub struct ObservationDataset {
 impl ObservationDataset {
     /// Загрузить датасет из JSON файла
     pub fn from_json_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| ThermokarstError::IoError(e))?;
+        let content = std::fs::read_to_string(path).map_err(|e| ThermokarstError::IoError(e))?;
 
-        let dataset: Self = serde_json::from_str(&content)
-            .map_err(|e| ThermokarstError::SerializationError(e))?;
+        let dataset: Self =
+            serde_json::from_str(&content).map_err(|e| ThermokarstError::SerializationError(e))?;
 
         Ok(dataset)
     }
@@ -68,15 +67,15 @@ impl ObservationDataset {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| ThermokarstError::SerializationError(e))?;
 
-        std::fs::write(path, json)
-            .map_err(|e| ThermokarstError::IoError(e))?;
+        std::fs::write(path, json).map_err(|e| ThermokarstError::IoError(e))?;
 
         Ok(())
     }
 
     /// Фильтровать наблюдения по региону (bbox)
     pub fn filter_by_bbox(&self, min_lat: f64, max_lat: f64, min_lon: f64, max_lon: f64) -> Self {
-        let filtered: Vec<ObservationData> = self.observations
+        let filtered: Vec<ObservationData> = self
+            .observations
             .iter()
             .filter(|obs| {
                 let (lat, lon) = obs.coordinates;
@@ -154,9 +153,7 @@ fn calculate_stats(values: &[f64]) -> Option<ValueStatistics> {
     let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
     let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
 
-    let variance: f64 = values.iter()
-        .map(|v| (v - mean).powi(2))
-        .sum::<f64>() / count as f64;
+    let variance: f64 = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / count as f64;
     let std_dev = variance.sqrt();
 
     Some(ValueStatistics {
@@ -187,7 +184,10 @@ pub fn create_example_yakutia_dataset() -> ObservationDataset {
                 metadata: [
                     ("soil_type".to_string(), "loam".to_string()),
                     ("vegetation".to_string(), "sparse".to_string()),
-                ].iter().cloned().collect(),
+                ]
+                .iter()
+                .cloned()
+                .collect(),
             },
             ObservationData {
                 site_id: "YAK-002".to_string(),
@@ -201,7 +201,10 @@ pub fn create_example_yakutia_dataset() -> ObservationDataset {
                 metadata: [
                     ("soil_type".to_string(), "peat".to_string()),
                     ("vegetation".to_string(), "dense".to_string()),
-                ].iter().cloned().collect(),
+                ]
+                .iter()
+                .cloned()
+                .collect(),
             },
             ObservationData {
                 site_id: "YAK-003".to_string(),
@@ -215,7 +218,10 @@ pub fn create_example_yakutia_dataset() -> ObservationDataset {
                 metadata: [
                     ("soil_type".to_string(), "loam".to_string()),
                     ("vegetation".to_string(), "moderate".to_string()),
-                ].iter().cloned().collect(),
+                ]
+                .iter()
+                .cloned()
+                .collect(),
             },
         ],
     }

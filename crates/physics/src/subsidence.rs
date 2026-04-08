@@ -1,6 +1,6 @@
 //! Расчет просадки грунта при оттаивании
 
-use thermokarst_core::{EnvironmentParams, Result};
+use thermokarst_core::EnvironmentParams;
 
 /// Калькулятор просадки грунта
 pub struct SubsidenceCalculator {

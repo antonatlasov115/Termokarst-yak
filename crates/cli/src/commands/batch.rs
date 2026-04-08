@@ -7,7 +7,14 @@ use thermokarst_simulation::{BatchSimulator, SimulationConfig};
 pub fn run(years: u32, output_dir: Option<PathBuf>, parallel: bool) -> Result<()> {
     println!("🌍 Запуск батч-симуляции для всех регионов Якутии");
     println!("⏱️  Период: {} лет", years);
-    println!("⚡ Режим: {}\n", if parallel { "параллельный" } else { "последовательный" });
+    println!(
+        "⚡ Режим: {}\n",
+        if parallel {
+            "параллельный"
+        } else {
+            "последовательный"
+        }
+    );
 
     let config = SimulationConfig {
         years,
@@ -41,7 +48,10 @@ pub fn run(years: u32, output_dir: Option<PathBuf>, parallel: bool) -> Result<()
                     println!("    Глубина: {:.2} м", last.depth);
                     println!("    Диаметр: {:.2} м", last.diameter);
                     println!("    Объем: {:.1} м³", last.volume);
-                    println!("    Стабильность: {}", if last.is_stable() { "✓" } else { "✗" });
+                    println!(
+                        "    Стабильность: {}",
+                        if last.is_stable() { "✓" } else { "✗" }
+                    );
                 }
                 println!("  Стадия: {:?}", result.stage);
             }
@@ -62,8 +72,7 @@ pub fn run(years: u32, output_dir: Option<PathBuf>, parallel: bool) -> Result<()
                 let filename = format!("{}.json", batch_result.scenario_name.replace(' ', "_"));
                 let path = dir.join(filename);
 
-                let json = serde_json::to_string_pretty(&result)
-                    .context("Ошибка сериализации")?;
+                let json = serde_json::to_string_pretty(&result).context("Ошибка сериализации")?;
                 std::fs::write(&path, json).context("Ошибка записи файла")?;
 
                 println!("  ✓ {}", path.display());

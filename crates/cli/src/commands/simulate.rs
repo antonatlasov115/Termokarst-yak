@@ -72,7 +72,10 @@ pub fn run(region: String, years: u32, output: Option<PathBuf>, verbose: bool) -
         println!("    Объем: {:.1} м³", last.volume);
         println!("    Площадь: {:.1} м²", last.surface_area);
         println!("    Соотношение Г/Д: {:.3}", last.aspect_ratio());
-        println!("    Стабильность: {}", if last.is_stable() { "✓" } else { "✗" });
+        println!(
+            "    Стабильность: {}",
+            if last.is_stable() { "✓" } else { "✗" }
+        );
     }
 
     println!("\n  Стадия развития: {:?}", result.stage);
@@ -80,8 +83,8 @@ pub fn run(region: String, years: u32, output: Option<PathBuf>, verbose: bool) -
     // Сохранение результатов
     if let Some(output_path) = output {
         println!("\n💾 Сохранение результатов в {:?}...", output_path);
-        let json = serde_json::to_string_pretty(&result)
-            .context("Ошибка сериализации результатов")?;
+        let json =
+            serde_json::to_string_pretty(&result).context("Ошибка сериализации результатов")?;
         std::fs::write(&output_path, json).context("Ошибка записи файла")?;
         println!("✅ Результаты сохранены");
     }

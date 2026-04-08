@@ -2,15 +2,16 @@
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use thermokarst_image_processing::{ImageDownloader, PhotoAnalyzer};
 use thermokarst_core::dataset::ObservationDataset;
+use thermokarst_image_processing::{ImageDownloader, PhotoAnalyzer};
 
+#[cfg(feature = "download")]
 pub fn download(output_dir: PathBuf) -> Result<()> {
     println!("📥 Загрузка примеров изображений термокарста");
     println!("📁 Директория: {:?}\n", output_dir);
 
-    let downloaded = ImageDownloader::download_examples(&output_dir)
-        .context("Ошибка загрузки изображений")?;
+    let downloaded =
+        ImageDownloader::download_examples(&output_dir).context("Ошибка загрузки изображений")?;
 
     println!("\n✅ Загружено {} изображений:", downloaded.len());
     for filename in &downloaded {
@@ -18,6 +19,11 @@ pub fn download(output_dir: PathBuf) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(not(feature = "download"))]
+pub fn download(_output_dir: PathBuf) -> Result<()> {
+    anyhow::bail!("Функция загрузки недоступна. Пересоберите с флагом --features download")
 }
 
 pub fn analyze(
@@ -32,10 +38,8 @@ pub fn analyze(
     println!("📏 Масштаб: {} м/пиксель\n", scale);
 
     // Загрузить и проанализировать
-    let analyzer = PhotoAnalyzer::from_file(
-        input.to_str().unwrap(),
-        scale,
-    ).context("Ошибка загрузки изображения")?;
+    let analyzer = PhotoAnalyzer::from_file(input.to_str().unwrap(), scale)
+        .context("Ошибка загрузки изображения")?;
 
     println!("🔄 Выполнение анализа...");
     let result = analyzer.analyze().context("Ошибка анализа")?;
@@ -46,7 +50,10 @@ pub fn analyze(
 
     for (i, feature) in result.features.iter().enumerate() {
         println!("\n  Образование #{}:", i + 1);
-        println!("    Центр: ({}, {}) пикселей", feature.center_x, feature.center_y);
+        println!(
+            "    Центр: ({}, {}) пикселей",
+            feature.center_x, feature.center_y
+        );
         println!("    Радиус: {} пикселей", feature.radius_pixels);
         println!("    Диаметр: {:.2} м", feature.diameter_meters);
         println!("    Площадь: {:.1} м²", feature.area_m2);
@@ -64,11 +71,8 @@ pub fn analyze(
             anyhow::bail!("Координаты должны быть в формате: lat,lon");
         }
 
-        let observations = analyzer.to_observation_dataset(
-            &site_id,
-            (coords[0], coords[1]),
-            "2025-08-15",
-        )?;
+        let observations =
+            analyzer.to_observation_dataset(&site_id, (coords[0], coords[1]), "2025-08-15")?;
 
         let dataset = ObservationDataset {
             name: format!("Photo Analysis: {}", site_id),
@@ -79,7 +83,9 @@ pub fn analyze(
 
         if let Some(output_path) = output {
             println!("\n💾 Сохранение датасета в {:?}...", output_path);
-            dataset.to_json_file(&output_path).context("Ошибка сохранения")?;
+            dataset
+                .to_json_file(&output_path)
+                .context("Ошибка сохранения")?;
             println!("✅ Датасет сохранен");
         }
     }

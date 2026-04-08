@@ -7,6 +7,10 @@ edition.workspace = true
 name = "thermokarst"
 path = "src/main.rs"
 
+[features]
+download = ["thermokarst-image-processing/download"]
+visualization = ["thermokarst-simulation/visualization"]
+
 [dependencies]
 thermokarst-core = { path = "../core" }
 thermokarst-physics = { path = "../physics" }

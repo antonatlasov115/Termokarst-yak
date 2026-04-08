@@ -78,6 +78,21 @@ enum Commands {
         #[command(subcommand)]
         command: ImageCommands,
     },
+
+    /// Визуализация результатов симуляции
+    Visualize {
+        /// Файл с результатами симуляции (JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Директория для сохранения графиков
+        #[arg(short, long, default_value = "visualizations")]
+        output_dir: PathBuf,
+
+        /// Тип графика (development, volume, stages, cross-section, all)
+        #[arg(short, long, default_value = "all")]
+        plot_type: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -181,13 +196,23 @@ fn main() -> Result<()> {
 
         Commands::Image { command } => match command {
             ImageCommands::Download { output_dir } => image::download(output_dir)?,
-            ImageCommands::Analyze { input, scale, output, site_id, coordinates } => {
-                image::analyze(input, scale, output, site_id, coordinates)?
-            }
+            ImageCommands::Analyze {
+                input,
+                scale,
+                output,
+                site_id,
+                coordinates,
+            } => image::analyze(input, scale, output, site_id, coordinates)?,
             ImageCommands::Synthetic { output, diameter } => {
                 image::create_synthetic(output, diameter)?
             }
         },
+
+        Commands::Visualize {
+            input,
+            output_dir,
+            plot_type,
+        } => visualize::run(input, output_dir, plot_type)?,
     }
 
     Ok(())

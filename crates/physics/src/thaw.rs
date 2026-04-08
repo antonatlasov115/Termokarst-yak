@@ -30,8 +30,7 @@ impl ThawDepthCalculator {
         let k = self.params.soil_type.thermal_conductivity();
 
         // Эффективная температура с учетом продолжительности сезона
-        let effective_temp = self.params.air_temp
-            * (self.params.warm_season_days as f64 / 365.0);
+        let effective_temp = self.params.air_temp * (self.params.warm_season_days as f64 / 365.0);
 
         // Фактор растительного покрова (замедляет протаивание)
         let vegetation_factor = 1.0 - 0.35 * self.params.vegetation_cover;

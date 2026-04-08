@@ -131,9 +131,9 @@ impl SimulationEngine {
             }
         }
 
-        let final_lens = lenses.last().ok_or_else(|| {
-            ThermokarstError::SimulationError("Нет результатов".to_string())
-        })?;
+        let final_lens = lenses
+            .last()
+            .ok_or_else(|| ThermokarstError::SimulationError("Нет результатов".to_string()))?;
 
         let stage = StabilityAnalyzer::determine_stage(final_lens);
 

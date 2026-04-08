@@ -22,13 +22,19 @@ pub fn create(output: PathBuf) -> Result<()> {
     if let Some(alt_stats) = &stats.active_layer_stats {
         println!("\n  Глубина активного слоя:");
         println!("    Среднее: {:.2} м", alt_stats.mean);
-        println!("    Мин-Макс: {:.2} - {:.2} м", alt_stats.min, alt_stats.max);
+        println!(
+            "    Мин-Макс: {:.2} - {:.2} м",
+            alt_stats.min, alt_stats.max
+        );
     }
 
     if let Some(temp_stats) = &stats.temperature_stats {
         println!("\n  Температура грунта:");
         println!("    Среднее: {:.1}°C", temp_stats.mean);
-        println!("    Мин-Макс: {:.1} - {:.1}°C", temp_stats.min, temp_stats.max);
+        println!(
+            "    Мин-Макс: {:.1} - {:.1}°C",
+            temp_stats.min, temp_stats.max
+        );
     }
 
     // Сохранение
@@ -58,7 +64,10 @@ pub fn info(input: PathBuf) -> Result<()> {
     println!("\n📈 Статистика:");
 
     if let Some(alt_stats) = &stats.active_layer_stats {
-        println!("\n  Глубина активного слоя ({} измерений):", alt_stats.count);
+        println!(
+            "\n  Глубина активного слоя ({} измерений):",
+            alt_stats.count
+        );
         println!("    Среднее: {:.2} м", alt_stats.mean);
         println!("    Мин: {:.2} м", alt_stats.min);
         println!("    Макс: {:.2} м", alt_stats.max);
@@ -108,7 +117,10 @@ pub fn calibrate(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
 
     let dataset = ObservationDataset::from_json_file(&input).context("Ошибка загрузки")?;
 
-    println!("✅ Датасет загружен ({} наблюдений)", dataset.observations.len());
+    println!(
+        "✅ Датасет загружен ({} наблюдений)",
+        dataset.observations.len()
+    );
 
     let calibrator = ModelCalibrator::new(dataset);
 
@@ -130,7 +142,10 @@ pub fn calibrate(input: PathBuf, output: Option<PathBuf>) -> Result<()> {
     let validation = calibrator.validate_model(&params, 10);
 
     println!("\n📊 Результаты валидации:");
-    println!("  Средняя относительная ошибка: {:.1}%", validation.mean_relative_error * 100.0);
+    println!(
+        "  Средняя относительная ошибка: {:.1}%",
+        validation.mean_relative_error * 100.0
+    );
     println!("  Модель - глубина: {:.2} м", validation.model_depth);
     println!("  Модель - диаметр: {:.2} м", validation.model_diameter);
 

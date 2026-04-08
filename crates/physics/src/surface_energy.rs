@@ -1,0 +1,292 @@
+//! Упрощенный баланс поверхностной энергии
+//!
+//! Рассчитывает радиационный баланс и температуру поверхности грунта
+//! на основе коротковолновой и длинноволновой радиации.
+
+/// Калькулятор баланса поверхностной энергии
+#[derive(Debug, Clone)]
+pub struct SurfaceEnergyBalance {
+    /// Альбедо поверхности (0-1)
+    pub albedo: f64,
+    /// Излучательная способность (0-1)
+    pub emissivity: f64,
+}
+
+impl SurfaceEnergyBalance {
+    /// Создать новый калькулятор
+    pub fn new(albedo: f64, emissivity: f64) -> Self {
+        Self { albedo, emissivity }
+    }
+
+    /// Типичные параметры для различных поверхностей
+    pub fn for_surface(surface_type: SurfaceType) -> Self {
+        match surface_type {
+            SurfaceType::Snow => Self::new(0.8, 0.99),
+            SurfaceType::Ice => Self::new(0.5, 0.97),
+            SurfaceType::Water => Self::new(0.08, 0.97),
+            SurfaceType::Soil => Self::new(0.2, 0.95),
+            SurfaceType::Vegetation => Self::new(0.18, 0.96),
+            SurfaceType::Peat => Self::new(0.15, 0.95),
+        }
+    }
+
+    /// Рассчитать чистую радиацию (Вт/м²)
+    ///
+    /// # Аргументы
+    /// * `shortwave_in` - Входящая коротковолновая радиация (Вт/м²)
+    /// * `longwave_in` - Входящая длинноволновая радиация (Вт/м²)
+    /// * `surface_temp` - Температура поверхности (°C)
+    pub fn net_radiation(&self, shortwave_in: f64, longwave_in: f64, surface_temp: f64) -> f64 {
+        const STEFAN_BOLTZMANN: f64 = 5.67e-8; // Вт/(м²·К⁴)
+
+        // Коротковолновая радиация (поглощенная)
+        let sw_net = (1.0 - self.albedo) * shortwave_in;
+
+        // Длинноволновая радиация
+        let temp_kelvin = surface_temp + 273.15;
+        let lw_out = self.emissivity * STEFAN_BOLTZMANN * temp_kelvin.powi(4);
+        let lw_net = self.emissivity * longwave_in - lw_out;
+
+        sw_net + lw_net
+    }
+
+    /// Упрощенный расчет радиации на основе широты и дня года
+    pub fn estimate_radiation(
+        &self,
+        latitude: f64,
+        day_of_year: u32,
+        cloud_cover: f64,
+    ) -> (f64, f64) {
+        use std::f64::consts::PI;
+
+        // Солнечная постоянная
+        const SOLAR_CONSTANT: f64 = 1367.0; // Вт/м²
+
+        // Склонение Солнца
+        let declination = 23.45 * (2.0 * PI * (284.0 + day_of_year as f64) / 365.0).sin();
+        let decl_rad = declination * PI / 180.0;
+        let lat_rad = latitude * PI / 180.0;
+
+        // Часовой угол восхода/заката
+        let cos_hour_angle = -(lat_rad.tan() * decl_rad.tan());
+        let hour_angle = if cos_hour_angle.abs() > 1.0 {
+            if cos_hour_angle > 0.0 {
+                0.0
+            } else {
+                PI
+            }
+        } else {
+            cos_hour_angle.acos()
+        };
+
+        // Суточная инсоляция на верхней границе атмосферы
+        let daily_toa = (24.0 / PI)
+            * SOLAR_CONSTANT
+            * (hour_angle * lat_rad.sin() * decl_rad.sin()
+                + lat_rad.cos() * decl_rad.cos() * hour_angle.sin());
+
+        // Учет облачности и атмосферы
+        let atmospheric_transmissivity = 0.75 * (1.0 - 0.65 * cloud_cover);
+        let shortwave_in = daily_toa * atmospheric_transmissivity / 24.0; // Средняя за сутки
+
+        // Длинноволновая радиация (упрощенная формула)
+        let longwave_in = 200.0 + 100.0 * cloud_cover;
+
+        (shortwave_in.max(0.0), longwave_in)
+    }
+
+    /// Рассчитать температуру поверхности из энергетического баланса
+    pub fn calculate_surface_temperature(
+        &self,
+        air_temp: f64,
+        shortwave_in: f64,
+        _longwave_in: f64,
+        ground_heat_flux: f64,
+    ) -> f64 {
+        // Упрощенный подход: температура поверхности близка к температуре воздуха
+        // с поправкой на радиационный баланс
+        let net_sw = (1.0 - self.albedo) * shortwave_in;
+
+        // Упрощенная оценка: каждые 100 Вт/м² добавляют ~5°C
+        let radiation_effect = (net_sw - ground_heat_flux) / 20.0;
+
+        air_temp + radiation_effect
+    }
+}
+
+/// Типы поверхности
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SurfaceType {
+    Snow,
+    Ice,
+    Water,
+    Soil,
+    Vegetation,
+    Peat,
+}
+
+/// Полный калькулятор энергетического баланса с учетом всех компонентов
+pub struct FullEnergyBalance {
+    surface: SurfaceEnergyBalance,
+    latitude: f64,
+}
+
+impl FullEnergyBalance {
+    /// Создать новый калькулятор
+    pub fn new(surface: SurfaceEnergyBalance, latitude: f64) -> Self {
+        Self { surface, latitude }
+    }
+
+    /// Рассчитать дневной энергетический баланс
+    pub fn daily_balance(
+        &self,
+        day_of_year: u32,
+        air_temp: f64,
+        cloud_cover: f64,
+    ) -> DailyEnergyBalance {
+        let (sw_in, lw_in) =
+            self.surface
+                .estimate_radiation(self.latitude, day_of_year, cloud_cover);
+
+        // Упрощенный тепловой поток в грунт (10% от чистой радиации)
+        let net_rad = self.surface.net_radiation(sw_in, lw_in, air_temp);
+        let ground_heat_flux = 0.1 * net_rad;
+
+        let surface_temp =
+            self.surface
+                .calculate_surface_temperature(air_temp, sw_in, lw_in, ground_heat_flux);
+
+        DailyEnergyBalance {
+            shortwave_in: sw_in,
+            longwave_in: lw_in,
+            net_radiation: net_rad,
+            ground_heat_flux,
+            surface_temperature: surface_temp,
+        }
+    }
+}
+
+/// Результат расчета дневного энергетического баланса
+#[derive(Debug, Clone)]
+pub struct DailyEnergyBalance {
+    /// Входящая коротковолновая радиация (Вт/м²)
+    pub shortwave_in: f64,
+    /// Входящая длинноволновая радиация (Вт/м²)
+    pub longwave_in: f64,
+    /// Чистая радиация (Вт/м²)
+    pub net_radiation: f64,
+    /// Тепловой поток в грунт (Вт/м²)
+    pub ground_heat_flux: f64,
+    /// Температура поверхности (°C)
+    pub surface_temperature: f64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_net_radiation_soil() {
+        let seb = SurfaceEnergyBalance::for_surface(SurfaceType::Soil);
+
+        let net_rad = seb.net_radiation(400.0, 250.0, 15.0);
+
+        println!("Net radiation (soil): {:.1} W/m²", net_rad);
+
+        // Почва с низким альбедо должна поглощать больше
+        assert!(net_rad > 100.0);
+    }
+
+    #[test]
+    fn test_estimate_radiation_summer() {
+        let seb = SurfaceEnergyBalance::for_surface(SurfaceType::Soil);
+
+        // Центральная Якутия, летний день
+        let (sw, lw) = seb.estimate_radiation(62.0, 180, 0.3);
+
+        println!("Summer radiation: SW={:.1} W/m², LW={:.1} W/m²", sw, lw);
+
+        assert!(sw > 100.0); // Летом должна быть значительная радиация
+        assert!(lw > 200.0);
+    }
+
+    #[test]
+    fn test_estimate_radiation_winter() {
+        let seb = SurfaceEnergyBalance::for_surface(SurfaceType::Snow);
+
+        // Центральная Якутия, зимний день
+        let (sw, lw) = seb.estimate_radiation(62.0, 1, 0.5);
+
+        println!("Winter radiation: SW={:.1} W/m², LW={:.1} W/m²", sw, lw);
+
+        assert!(sw < 50.0); // Зимой радиация минимальна
+    }
+
+    #[test]
+    fn test_surface_temperature() {
+        let seb = SurfaceEnergyBalance::for_surface(SurfaceType::Soil);
+
+        let t_surface = seb.calculate_surface_temperature(
+            20.0,  // Температура воздуха
+            500.0, // Коротковолновая радиация
+            300.0, // Длинноволновая радиация
+            50.0,  // Тепловой поток в грунт
+        );
+
+        println!("Surface temperature: {:.1}°C", t_surface);
+
+        // Температура поверхности должна быть выше температуры воздуха летом
+        assert!(t_surface > 15.0);
+    }
+
+    #[test]
+    fn test_daily_balance_yakutia_summer() {
+        let seb = SurfaceEnergyBalance::for_surface(SurfaceType::Vegetation);
+        let calc = FullEnergyBalance::new(seb, 62.0);
+
+        let balance = calc.daily_balance(180, 20.0, 0.3);
+
+        println!("Summer balance:");
+        println!("  SW in: {:.1} W/m²", balance.shortwave_in);
+        println!("  LW in: {:.1} W/m²", balance.longwave_in);
+        println!("  Net rad: {:.1} W/m²", balance.net_radiation);
+        println!("  Ground flux: {:.1} W/m²", balance.ground_heat_flux);
+        println!("  Surface temp: {:.1}°C", balance.surface_temperature);
+
+        assert!(balance.net_radiation > 0.0);
+        assert!(balance.surface_temperature > 10.0);
+    }
+
+    #[test]
+    fn test_daily_balance_yakutia_winter() {
+        let seb = SurfaceEnergyBalance::for_surface(SurfaceType::Snow);
+        let calc = FullEnergyBalance::new(seb, 62.0);
+
+        let balance = calc.daily_balance(1, -30.0, 0.5);
+
+        println!("Winter balance:");
+        println!("  SW in: {:.1} W/m²", balance.shortwave_in);
+        println!("  LW in: {:.1} W/m²", balance.longwave_in);
+        println!("  Net rad: {:.1} W/m²", balance.net_radiation);
+        println!("  Ground flux: {:.1} W/m²", balance.ground_heat_flux);
+        println!("  Surface temp: {:.1}°C", balance.surface_temperature);
+
+        // Зимой чистая радиация может быть отрицательной
+        assert!(balance.surface_temperature < -20.0);
+    }
+
+    #[test]
+    fn test_albedo_effect() {
+        let snow = SurfaceEnergyBalance::for_surface(SurfaceType::Snow);
+        let soil = SurfaceEnergyBalance::for_surface(SurfaceType::Soil);
+
+        let net_rad_snow = snow.net_radiation(400.0, 250.0, 0.0);
+        let net_rad_soil = soil.net_radiation(400.0, 250.0, 0.0);
+
+        // Почва должна поглощать больше радиации из-за низкого альбедо
+        assert!(net_rad_soil > net_rad_snow);
+
+        println!("Snow net rad: {:.1} W/m²", net_rad_snow);
+        println!("Soil net rad: {:.1} W/m²", net_rad_soil);
+    }
+}

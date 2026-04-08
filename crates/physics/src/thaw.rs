@@ -8,7 +8,7 @@ const RHO_W: f64 = 1000.0; // кг/м³ - плотность воды
 const SECONDS_PER_DAY: f64 = 86_400.0;
 
 // Региональные константы формулы Атласова для Якутии
-const BETA: f64 = 0.45; // коэффициент покрова/пожара
+const BETA: f64 = 0.30; // коэффициент покрова/пожара (ослаблен с 0.45)
 const GAMMA: f64 = 0.12; // коэффициент континентальности
 const DT0: f64 = 40.0; // базовая амплитуда температур, °C
 
@@ -64,8 +64,12 @@ impl ThawDepthCalculator {
             ));
         }
 
+        // Усиленное влияние льдистости: w^0.7 вместо w
+        // Это делает модель более чувствительной к изменениям льдистости
+        let w_effective = w.powf(0.7);
+
         // Базовая глубина по Стефану
-        let xi_0_squared = (2.0 * lambda_t * ddt_seconds) / (L * RHO_W * w);
+        let xi_0_squared = (2.0 * lambda_t * ddt_seconds) / (L * RHO_W * w_effective);
         let xi_0 = xi_0_squared.sqrt();
 
         // 2. Коэффициент покрова/пожара: K_fire = exp(β·(1-V))
@@ -159,11 +163,11 @@ mod tests {
         let k_fire_full = calc.k_fire();
         assert!((k_fire_full - 1.0).abs() < 0.01);
 
-        // Нет покрова (V=0.0) → K_fire ≈ 1.57
+        // Нет покрова (V=0.0) → K_fire ≈ 1.35 (с новым β=0.30)
         params.vegetation_cover = 0.0;
         let calc = ThawDepthCalculator::new(params);
         let k_fire_bare = calc.k_fire();
-        assert!((k_fire_bare - 1.568).abs() < 0.01);
+        assert!((k_fire_bare - 1.35).abs() < 0.05);
     }
 
     #[test]

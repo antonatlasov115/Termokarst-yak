@@ -102,6 +102,8 @@ thermokarst-yakutia/
 - ✅ **Фазовые переходы лед-вода** (портировано из PFLOTRAN)
 - ✅ **Уравнение Ричардса** для потоков воды (портировано из PFLOTRAN)
 - ✅ **Интегрированная модель мерзлых грунтов**
+- ✅ **Обратное моделирование** - определение времени образования термокарста 🆕
+- ✅ **Интеграция со спутниковыми данными** (Sentinel-2, Landsat, GEE) 🆕
 - ✅ Влияние влажности грунта на протаивание
 - ✅ Улучшенная калибровка параметров (β=0.30, w^0.7)
 - ✅ Количественная оценка неопределенности прогнозов
@@ -157,6 +159,30 @@ cargo run --release -- dataset info -i observations.json
 
 # Калибровать модель по данным
 cargo run --release -- dataset calibrate -i observations.json -o params.json
+```
+
+### Обратное моделирование (определение времени образования)
+
+```bash
+# Определить когда образовался термокарст по текущим параметрам
+cargo run --release -- inverse \
+  --depth 3.5 \
+  --diameter 15.0 \
+  --latitude 62.5 \
+  --longitude 129.3 \
+  --year 2025 \
+  --ndvi 0.35
+
+# Показать руководство по получению спутниковых данных
+cargo run --release -- inverse --satellite-guide
+
+# Поиск доступных спутниковых снимков
+cargo run --release -- inverse \
+  --depth 3.5 \
+  --diameter 15.0 \
+  --latitude 62.5 \
+  --longitude 129.3 \
+  --search-satellite
 ```
 
 ## Регионы
@@ -321,8 +347,8 @@ cargo test validation_atlasov
 
 ## 📚 Документация
 
-- [ALGORITHM.md](docs/ALGORITHM.md) - Описание алгоритма
-- [PFLOTRAN_PORTING.md](docs/PFLOTRAN_PORTING.md) - Портирование из PFLOTRAN 🆕
+- [INVERSE_MODELING.md](docs/INVERSE_MODELING.md) - Обратное моделирование и спутниковые данные 🆕
+- [PFLOTRAN_PORTING.md](docs/PFLOTRAN_PORTING.md) - Портирование из PFLOTRAN
 - [DATA_SOURCES.md](docs/DATA_SOURCES.md) - Источники данных
 - [COMPARISON.md](docs/COMPARISON.md) - Сравнение с другими моделями
 - [ROADMAP.md](docs/ROADMAP.md) - План развития

@@ -93,6 +93,9 @@ enum Commands {
         #[arg(short, long, default_value = "all")]
         plot_type: String,
     },
+
+    /// Обратное моделирование - определение времени образования термокарста
+    Inverse(inverse::InverseArgs),
 }
 
 #[derive(Subcommand)]
@@ -253,6 +256,8 @@ fn main() -> Result<()> {
             output_dir,
             plot_type,
         } => visualize::run(input, output_dir, plot_type)?,
+
+        Commands::Inverse(args) => inverse::run(args)?,
     }
 
     Ok(())

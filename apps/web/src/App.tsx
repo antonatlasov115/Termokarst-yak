@@ -64,6 +64,21 @@ function App() {
   const [coordinates, setCoordinates] = useState({ lat: 62.5, lon: 129.3 });
   const [measuredDiameter, setMeasuredDiameter] = useState<number | null>(null);
 
+  // Физические константы (общие для обеих симуляций)
+  const L = 334000.0; // Дж/кг - скрытая теплота плавления льда
+  const RHO_W = 1000.0; // кг/м³ - плотность воды
+  const SECONDS_PER_DAY = 86400.0;
+  const BETA = 0.30; // коэффициент покрова
+  const GAMMA = 0.12; // коэффициент континентальности
+  const DT0 = 40.0; // базовая амплитуда температур
+
+  // Региональные параметры (исправлены амплитуды температур для Якутии)
+  const REGIONAL_PARAMS: Record<string, { warmSeasonDays: number; tempAmplitude: number; thermalCond: number }> = {
+    north: { warmSeasonDays: 90, tempAmplitude: 98.0, thermalCond: 0.5 },      // Верхоянск
+    central: { warmSeasonDays: 110, tempAmplitude: 90.0, thermalCond: 1.2 },   // Центральная Якутия
+    south: { warmSeasonDays: 120, tempAmplitude: 85.0, thermalCond: 1.5 },     // Южная Якутия
+  };
+
   const handleLocationSelected = (lat: number, lon: number, diameter?: number) => {
     setCoordinates({ lat, lon });
     if (diameter) {
@@ -74,76 +89,165 @@ function App() {
   };
 
   const runForwardSimulation = async () => {
-    setIsRunning(true);
+    try {
+      setIsRunning(true);
 
-    const mockResults: SimulationResult[] = [];
-    for (let year = 0; year <= params.years; year++) {
-      const depth = Math.sqrt(year * 0.5 * params.temperature * (1 - params.vegetation * 0.3)) * (1 + params.iceContent);
-      const diameter = 2 + Math.log(year + 1) * 2 * (1 + params.iceContent * 0.5);
-      const volume = Math.PI * Math.pow(diameter / 2, 2) * depth;
-      const stability = Math.max(0, 1 - (depth / 10) * (diameter / 20));
+      const regional = REGIONAL_PARAMS[params.region];
 
-      mockResults.push({
-        year,
-        depth: parseFloat(depth.toFixed(2)),
-        diameter: parseFloat(diameter.toFixed(2)),
-        volume: parseFloat(volume.toFixed(2)),
-        stability: parseFloat(stability.toFixed(2)),
-      });
+      const mockResults: SimulationResult[] = [];
+      for (let year = 0; year <= params.years; year++) {
+        if (year === 0) {
+          mockResults.push({ year: 0, depth: 0, diameter: 2, volume: 0, stability: 1 });
+          continue;
+        }
+
+        // Формула Атласова для глубины протаивания
+        // ξ_A = √(2λₜ·DDT / (L·ρw·w)) · exp(β·(1-V)) · (1 + γ·ln(ΔT/ΔT₀)) · f_moisture · √year
+
+        // 1. DDT (degree-days of thawing)
+        const ddt_days = params.temperature * regional.warmSeasonDays;
+        const ddt_seconds = ddt_days * SECONDS_PER_DAY;
+
+        // 2. Льдистость (степень 1.0 по формуле Стефана)
+        const w = params.iceContent;
+
+        // 3. Базовая глубина по Стефану
+        const xi_0 = Math.sqrt((2.0 * regional.thermalCond * ddt_seconds) / (L * RHO_W * w));
+
+        // 4. Коэффициент покрова: exp(β·(1-V))
+        const k_fire = Math.exp(BETA * (1.0 - params.vegetation));
+
+        // 5. Функция континентальности: 1 + γ·ln(ΔT/ΔT₀)
+        const f_continental = 1.0 + GAMMA * Math.log(regional.tempAmplitude / DT0);
+
+        // 6. Фактор влажности (предполагаем среднюю влажность 0.3)
+        const f_moisture = 1.0 + 0.3 * 0.3;
+
+        // 7. Итоговая глубина с учетом времени
+        const depth = xi_0 * k_fire * f_continental * f_moisture * Math.sqrt(year);
+
+        // Латеральное расширение: D(t) = D₀ + k·ln(1 + t)
+        const k_lateral = 2.0 * (1.0 + params.iceContent * 0.5);
+        const diameter = 2.0 + k_lateral * Math.log(1 + year);
+
+        // Объем: V = π·r²·h
+        const volume = Math.PI * Math.pow(diameter / 2, 2) * depth;
+
+        // Стабильность (упрощенная оценка)
+        const stability = Math.max(0, 1 - (depth / 10) * (diameter / 20));
+
+        mockResults.push({
+          year,
+          depth: parseFloat(depth.toFixed(2)),
+          diameter: parseFloat(diameter.toFixed(2)),
+          volume: parseFloat(volume.toFixed(2)),
+          stability: parseFloat(stability.toFixed(2)),
+        });
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      setResults(mockResults);
+      setCurrentYear(params.years);
+      setInverseResult(null);
+    } catch (error) {
+      console.error('Ошибка прямой симуляции:', error);
+      alert('Ошибка при выполнении симуляции: ' + error);
+    } finally {
+      setIsRunning(false);
     }
-
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    setResults(mockResults);
-    setCurrentYear(params.years);
-    setInverseResult(null);
-    setIsRunning(false);
   };
 
   const runInverseSimulation = async () => {
-    setIsRunning(true);
+    try {
+      setIsRunning(true);
 
-    // Используем измеренный диаметр если есть
-    const diameter = measuredDiameter || inverseParams.currentDiameter;
-    const depth = inverseParams.currentDepth;
+      // Используем измеренный диаметр если есть
+      const diameter = measuredDiameter || inverseParams.currentDiameter;
+      const depth = inverseParams.currentDepth;
 
-    // Обратная симуляция - определяем возраст по объему
-    const currentVolume = Math.PI * Math.pow(diameter / 2, 2) * depth;
-    const estimatedAge = Math.round(
-      Math.sqrt(currentVolume / (params.temperature * (1 + params.iceContent))) * 2
-    );
-    const startYear = inverseParams.observationYear - estimatedAge;
-    const confidence = 0.75 + Math.random() * 0.2;
+      // Определяем регион по широте
+      const lat = coordinates?.lat || 62.5;
+      const regional = lat > 68 ? REGIONAL_PARAMS.north :
+                       lat > 64 ? REGIONAL_PARAMS.central :
+                       REGIONAL_PARAMS.south;
 
-    // Генерируем историю роста
-    const mockResults: SimulationResult[] = [];
-    for (let year = 0; year <= estimatedAge; year++) {
-      const progress = year / estimatedAge;
-      const d = depth * Math.sqrt(progress);
-      const diam = 2 + (diameter - 2) * Math.log(year + 1) / Math.log(estimatedAge + 1);
-      const volume = Math.PI * Math.pow(diam / 2, 2) * d;
-      const stability = Math.max(0, 1 - (d / 10) * (diam / 20));
+      // Обратная формула Атласова для определения возраста
+      // Из D(t) = D₀ + k·ln(1 + t) => t = exp((D - D₀)/k) - 1
+      const k_lateral = 2.0 * (1.0 + params.iceContent * 0.5);
+      const ageFromDiameter = Math.max(1, Math.round(Math.exp((diameter - 2.0) / k_lateral) - 1));
 
-      mockResults.push({
-        year: startYear + year,
-        depth: parseFloat(d.toFixed(2)),
-        diameter: parseFloat(diam.toFixed(2)),
-        volume: parseFloat(volume.toFixed(2)),
-        stability: parseFloat(stability.toFixed(2)),
+      // Проверяем согласованность с глубиной
+      // ξ = ξ₀ · k_fire · f_continental · f_moisture · √t
+      // => t = (ξ / (ξ₀ · k_fire · f_continental · f_moisture))²
+
+      const ddt_days = params.temperature * regional.warmSeasonDays;
+      const ddt_seconds = ddt_days * SECONDS_PER_DAY;
+      const w = params.iceContent; // степень 1.0, не 0.7
+      const xi_0 = Math.sqrt((2.0 * regional.thermalCond * ddt_seconds) / (L * RHO_W * w));
+      const k_fire = Math.exp(BETA * (1.0 - params.vegetation));
+      const f_continental = 1.0 + GAMMA * Math.log(regional.tempAmplitude / DT0);
+      const f_moisture = 1.0 + 0.3 * 0.3;
+
+      const ageFromDepth = Math.pow(depth / (xi_0 * k_fire * f_continental * f_moisture), 2);
+
+      // Оценка достоверности на основе согласованности двух методов
+      const ageDiff = Math.abs(ageFromDiameter - ageFromDepth);
+      const maxAge = Math.max(ageFromDiameter, ageFromDepth);
+      const confidence = Math.max(0.5, Math.min(0.95, 1.0 - ageDiff / (maxAge * 2)));
+
+      // Усредняем оценки возраста используя confidence как вес
+      // Если методы согласны (высокий confidence) - доверяем обоим поровну
+      // Если не согласны (низкий confidence) - больше веса диаметру (он точнее измеряется)
+      const w_depth = confidence;
+      const finalAge = Math.round(ageFromDepth * w_depth + ageFromDiameter * (1.0 - w_depth));
+      const startYear = inverseParams.observationYear - finalAge;
+
+      // Генерируем историю роста используя прямую модель
+      const mockResults: SimulationResult[] = [];
+      for (let year = 0; year <= finalAge; year++) {
+        if (year === 0) {
+          mockResults.push({
+            year: startYear,
+            depth: 0,
+            diameter: 2.0,
+            volume: 0,
+            stability: 1.0,
+          });
+          continue;
+        }
+
+        // Используем прямую формулу Атласова
+        const d = xi_0 * k_fire * f_continental * f_moisture * Math.sqrt(year);
+        const diam = 2.0 + k_lateral * Math.log(1 + year);
+        const volume = Math.PI * Math.pow(diam / 2, 2) * d;
+        const stability = Math.max(0, 1 - (d / 10) * (diam / 20));
+
+        mockResults.push({
+          year: startYear + year,
+          depth: parseFloat(d.toFixed(2)),
+          diameter: parseFloat(diam.toFixed(2)),
+          volume: parseFloat(volume.toFixed(2)),
+          stability: parseFloat(stability.toFixed(2)),
+        });
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      setResults(mockResults);
+      setCurrentYear(inverseParams.observationYear);
+      setInverseResult({
+        estimatedAge: finalAge,
+        startYear,
+        confidence,
+        results: mockResults,
       });
+    } catch (error) {
+      console.error('Ошибка обратной симуляции:', error);
+      alert('Ошибка при выполнении обратной симуляции: ' + error);
+    } finally {
+      setIsRunning(false);
     }
-
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    setResults(mockResults);
-    setCurrentYear(inverseParams.observationYear);
-    setInverseResult({
-      estimatedAge,
-      startYear,
-      confidence,
-      results: mockResults,
-    });
-    setIsRunning(false);
   };
 
   const exportResults = () => {

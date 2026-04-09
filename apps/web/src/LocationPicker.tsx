@@ -43,6 +43,9 @@ export function LocationPicker({ mode, onLocationSelected }: LocationPickerProps
 
       // Обработчик клика по карте
       map.on('click', (e: L.LeafletMouseEvent) => {
+        // Игнорируем клики если идет измерение
+        if (measuringMode) return;
+
         const { lat, lng } = e.latlng;
         setSelectedLocation({ lat, lon: lng });
 
@@ -70,7 +73,7 @@ export function LocationPicker({ mode, onLocationSelected }: LocationPickerProps
 
         markerRef.current = marker;
 
-        // Если режим измерения, удаляем старый круг
+        // Сбрасываем измерение при выборе новой точки
         if (circleRef.current) {
           circleRef.current.remove();
           circleRef.current = null;
@@ -108,77 +111,84 @@ export function LocationPicker({ mode, onLocationSelected }: LocationPickerProps
     circleRef.current = circle;
 
     // Добавляем контроль для изменения размера
-    const radiusControl = L.control({ position: 'topright' });
-    radiusControl.onAdd = () => {
-      const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-      div.style.background = 'white';
-      div.style.padding = '10px';
-      div.style.borderRadius = '8px';
-      div.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+    const RadiusControl = L.Control.extend({
+      onAdd: function() {
+        const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        div.style.background = 'white';
+        div.style.padding = '10px';
+        div.style.borderRadius = '8px';
+        div.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
 
-      div.innerHTML = `
-        <div style="font-family: sans-serif;">
-          <div style="font-weight: bold; margin-bottom: 8px;">Измерение водоема</div>
-          <div style="margin-bottom: 8px;">
-            <label style="display: block; font-size: 12px; margin-bottom: 4px;">Диаметр: <span id="diameter-value">20</span> м</label>
-            <input type="range" id="diameter-slider" min="2" max="100" value="10" step="0.5" style="width: 200px;" />
+        div.innerHTML = `
+          <div style="font-family: sans-serif;">
+            <div style="font-weight: bold; margin-bottom: 8px;">Измерение водоема</div>
+            <div style="margin-bottom: 8px;">
+              <label style="display: block; font-size: 12px; margin-bottom: 4px;">Диаметр: <span id="diameter-value">20</span> м</label>
+              <input type="range" id="diameter-slider" min="2" max="100" value="10" step="0.5" style="width: 200px;" />
+            </div>
+            <button id="confirm-measurement" style="
+              width: 100%;
+              padding: 8px;
+              background: #48bb78;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              font-weight: 600;
+            ">✓ Подтвердить</button>
+            <button id="cancel-measurement" style="
+              width: 100%;
+              padding: 8px;
+              background: #e53e3e;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              font-weight: 600;
+              margin-top: 4px;
+            ">✗ Отмена</button>
           </div>
-          <button id="confirm-measurement" style="
-            width: 100%;
-            padding: 8px;
-            background: #48bb78;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 600;
-          ">✓ Подтвердить</button>
-          <button id="cancel-measurement" style="
-            width: 100%;
-            padding: 8px;
-            background: #e53e3e;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 600;
-            margin-top: 4px;
-          ">✗ Отмена</button>
-        </div>
-      `;
+        `;
 
-      const slider = div.querySelector('#diameter-slider') as HTMLInputElement;
-      const valueSpan = div.querySelector('#diameter-value') as HTMLSpanElement;
-      const confirmBtn = div.querySelector('#confirm-measurement') as HTMLButtonElement;
-      const cancelBtn = div.querySelector('#cancel-measurement') as HTMLButtonElement;
+        const slider = div.querySelector('#diameter-slider') as HTMLInputElement;
+        const valueSpan = div.querySelector('#diameter-value') as HTMLSpanElement;
+        const confirmBtn = div.querySelector('#confirm-measurement') as HTMLButtonElement;
+        const cancelBtn = div.querySelector('#cancel-measurement') as HTMLButtonElement;
 
-      slider.addEventListener('input', (e) => {
-        const radius = parseFloat((e.target as HTMLInputElement).value);
-        const diameter = radius * 2;
-        valueSpan.textContent = diameter.toFixed(1);
-        circle.setRadius(radius);
-      });
+        // Предотвращаем клики по контролу от распространения на карту
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
 
-      confirmBtn.addEventListener('click', () => {
-        const radius = parseFloat(slider.value);
-        const diameter = radius * 2;
-        setMeasuredDiameter(diameter);
-        setMeasuringMode(false);
-        map.removeControl(radiusControl);
-      });
+        slider.addEventListener('input', (e) => {
+          const radius = parseFloat((e.target as HTMLInputElement).value);
+          const diameter = radius * 2;
+          valueSpan.textContent = diameter.toFixed(1);
+          circle.setRadius(radius);
+        });
 
-      cancelBtn.addEventListener('click', () => {
-        if (circleRef.current) {
-          circleRef.current.remove();
-          circleRef.current = null;
-        }
-        setMeasuringMode(false);
-        map.removeControl(radiusControl);
-      });
+        confirmBtn.addEventListener('click', () => {
+          const radius = parseFloat(slider.value);
+          const diameter = radius * 2;
+          setMeasuredDiameter(diameter);
+          map.removeControl(radiusControl);
+          setTimeout(() => setMeasuringMode(false), 100);
+        });
 
-      return div;
-    };
+        cancelBtn.addEventListener('click', () => {
+          if (circleRef.current) {
+            circleRef.current.remove();
+            circleRef.current = null;
+          }
+          setMeasuredDiameter(null);
+          map.removeControl(radiusControl);
+          setTimeout(() => setMeasuringMode(false), 100);
+        });
 
+        return div;
+      }
+    });
+
+    const radiusControl = new RadiusControl({ position: 'topright' });
     radiusControl.addTo(map);
   };
 

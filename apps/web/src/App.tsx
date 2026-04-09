@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { Play, Download, Settings, Info, Thermometer, Droplets, Mountain } from 'lucide-react';
+import { Play, Download, Settings, Info, Thermometer, Droplets, Mountain, MapPin } from 'lucide-react';
+import { ThermokarstMap } from './ThermokarstMap';
 import './App.css';
 
 interface SimulationParams {
@@ -31,6 +32,8 @@ function App() {
   const [results, setResults] = useState<SimulationResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  const [currentYear, setCurrentYear] = useState(0);
+  const [coordinates, setCoordinates] = useState({ lat: 62.5, lon: 129.3 });
 
   const runSimulation = async () => {
     setIsRunning(true);
@@ -56,6 +59,7 @@ function App() {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     setResults(mockResults);
+    setCurrentYear(params.years);
     setIsRunning(false);
   };
 
@@ -98,6 +102,7 @@ function App() {
             <li>✅ Фазовые переходы лед-вода (PFLOTRAN)</li>
             <li>✅ Полный энергетический баланс</li>
             <li>✅ Научная достоверность: 9.0/10</li>
+            <li>✅ Интерактивная карта роста термокарста</li>
           </ul>
         </div>
       )}
@@ -176,6 +181,41 @@ function App() {
               />
             </div>
 
+            <div className="form-group">
+              <label>
+                <MapPin size={16} />
+                Координаты
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <input
+                  type="number"
+                  placeholder="Широта"
+                  value={coordinates.lat}
+                  onChange={(e) => setCoordinates({...coordinates, lat: parseFloat(e.target.value) || 62.5})}
+                  style={{
+                    flex: 1,
+                    padding: '0.5rem',
+                    border: '2px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '0.9rem'
+                  }}
+                />
+                <input
+                  type="number"
+                  placeholder="Долгота"
+                  value={coordinates.lon}
+                  onChange={(e) => setCoordinates({...coordinates, lon: parseFloat(e.target.value) || 129.3})}
+                  style={{
+                    flex: 1,
+                    padding: '0.5rem',
+                    border: '2px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '0.9rem'
+                  }}
+                />
+              </div>
+            </div>
+
             <button
               className="btn btn-primary"
               onClick={runSimulation}
@@ -226,6 +266,31 @@ function App() {
             </div>
           ) : (
             <>
+              <div className="panel" style={{ height: '500px' }}>
+                <h2>🗺️ Карта роста термокарста</h2>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: '#4a5568', fontWeight: 500 }}>
+                    Год: {currentYear}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max={params.years}
+                    value={currentYear}
+                    onChange={(e) => setCurrentYear(parseInt(e.target.value))}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div style={{ height: 'calc(100% - 80px)' }}>
+                  <ThermokarstMap
+                    latitude={coordinates.lat}
+                    longitude={coordinates.lon}
+                    results={results}
+                    currentYear={currentYear}
+                  />
+                </div>
+              </div>
+
               <div className="panel">
                 <h2>Глубина протаивания</h2>
                 <ResponsiveContainer width="100%" height={250}>

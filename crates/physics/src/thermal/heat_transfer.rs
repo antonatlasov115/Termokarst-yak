@@ -14,7 +14,7 @@ impl HeatTransferCalculator {
 
     /// Расчет теплового потока (Вт/м²)
     pub fn heat_flux(&self) -> f64 {
-        let k = self.params.soil_type.thermal_conductivity();
+        let k = self.params.soil_type.thermal_conductivity(self.params.soil_saturation_ratio);
         let temp_gradient =
             (self.params.air_temp - self.params.permafrost_temp) / self.params.permafrost_depth;
 

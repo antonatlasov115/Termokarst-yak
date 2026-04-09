@@ -183,7 +183,7 @@ mod tests {
             vegetation_cover: 0.3,
             permafrost_depth: 100.0,
             warm_season_days: 120,
-            water_availability: 0.5,
+            soil_saturation_ratio: 0.5,
             temperature_amplitude: 88.0,
         };
 

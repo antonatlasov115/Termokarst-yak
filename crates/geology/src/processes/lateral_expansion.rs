@@ -31,7 +31,7 @@ impl LateralExpansionCalculator {
         let base_expansion_rate = 0.4;
 
         // Фактор доступности воды (ускоряет боковое расширение)
-        let water_factor = 1.0 + 0.6 * self.params.water_availability;
+        let water_factor = 1.0 + 0.6 * self.params.soil_saturation_ratio;
 
         // Фактор типа грунта (песок расширяется быстрее, глина медленнее)
         let soil_factor = match self.params.soil_type {
@@ -160,10 +160,10 @@ mod tests {
     #[test]
     fn test_water_increases_expansion() {
         let mut params1 = EnvironmentParams::default();
-        params1.water_availability = 0.2;
+        params1.soil_saturation_ratio = 0.2;
 
         let mut params2 = EnvironmentParams::default();
-        params2.water_availability = 0.9;
+        params2.soil_saturation_ratio = 0.9;
 
         let calc1 = LateralExpansionCalculator::new(params1);
         let calc2 = LateralExpansionCalculator::new(params2);

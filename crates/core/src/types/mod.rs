@@ -1,5 +1,9 @@
 //! Основные типы данных
 
+pub mod error;
+
+pub use error::*;
+
 use serde::{Deserialize, Serialize};
 
 /// Тип грунта
@@ -18,15 +22,43 @@ pub enum SoilType {
 }
 
 impl SoilType {
-    /// Коэффициент теплопроводности (Вт/(м·К))
-    pub fn thermal_conductivity(&self) -> f64 {
+    /// Теплопроводность сухого грунта (Вт/(м·К))
+    pub fn lambda_dry(&self) -> f64 {
         match self {
-            Self::Clay => 1.2,
-            Self::Sand => 2.0,
+            Self::Clay => 0.4,
+            Self::Sand => 0.3,
+            Self::Peat => 0.06,
+            Self::Loam => 0.5,
+            Self::Silt => 0.5,
+        }
+    }
+
+    /// Теплопроводность насыщенного грунта (Вт/(м·К))
+    pub fn lambda_sat(&self) -> f64 {
+        match self {
+            Self::Clay => 1.6,
+            Self::Sand => 2.2,
             Self::Peat => 0.5,
-            Self::Loam => 1.5,
+            Self::Loam => 1.8,
             Self::Silt => 1.8,
         }
+    }
+
+    /// Теплопроводность талого грунта с учетом влажности по модели Йоханзена (1975)
+    ///
+    /// λₜ(Sr) = λdry + (λsat - λdry) · Sr^0.7
+    ///
+    /// где Sr - степень насыщения (saturation ratio, 0-1)
+    pub fn thermal_conductivity(&self, saturation_ratio: f64) -> f64 {
+        let lambda_dry = self.lambda_dry();
+        let lambda_sat = self.lambda_sat();
+        lambda_dry + (lambda_sat - lambda_dry) * saturation_ratio.powf(0.7)
+    }
+
+    /// Старый метод для обратной совместимости (использует Sr=0.5)
+    #[deprecated(since = "0.3.0", note = "Use thermal_conductivity(saturation_ratio) instead")]
+    pub fn thermal_conductivity_legacy(&self) -> f64 {
+        self.thermal_conductivity(0.5)
     }
 
     /// Пористость грунта (0-1)
@@ -70,8 +102,9 @@ pub struct EnvironmentParams {
     /// Покрытие растительностью (0-1)
     pub vegetation_cover: f64,
 
-    /// Доступность воды (0-1)
-    pub water_availability: f64,
+    /// Степень насыщения грунта водой (0-1)
+    /// 0 = полностью сухой, 1 = полностью насыщенный
+    pub soil_saturation_ratio: f64,
 
     /// Глубина залегания мерзлоты (м)
     pub permafrost_depth: f64,
@@ -92,7 +125,7 @@ impl Default for EnvironmentParams {
             ice_content: 0.7,
             soil_type: SoilType::Loam,
             vegetation_cover: 0.4,
-            water_availability: 0.6,
+            soil_saturation_ratio: 0.5, // средняя влажность
             permafrost_depth: 1.5,
             warm_season_days: 120,
             temperature_amplitude: 88.0, // Центральная Якутия
@@ -109,7 +142,7 @@ impl EnvironmentParams {
             ice_content: 0.85,
             soil_type: SoilType::Peat,
             vegetation_cover: 0.6,
-            water_availability: 0.8,
+            soil_saturation_ratio: 0.7, // высокая влажность
             permafrost_depth: 0.8,
             warm_season_days: 90,
             temperature_amplitude: 95.0, // Северная Якутия - более экстремальная
@@ -129,7 +162,7 @@ impl EnvironmentParams {
             ice_content: 0.5,
             soil_type: SoilType::Loam,
             vegetation_cover: 0.3,
-            water_availability: 0.5,
+            soil_saturation_ratio: 0.4, // умеренная влажность
             permafrost_depth: 2.0,
             warm_season_days: 140,
             temperature_amplitude: 75.0, // Южная Якутия - менее континентальная

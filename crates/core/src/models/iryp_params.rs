@@ -61,7 +61,7 @@ pub fn estimate_params_from_site(site: &IrypSite) -> EnvironmentParams {
 
     // 9. Доступность воды - зависит от типа местности
     let area_lower = site.area.to_lowercase();
-    params.water_availability = if area_lower.contains("delta") {
+    params.soil_saturation_ratio = if area_lower.contains("delta") {
         0.9 // Дельты - очень высокая
     } else if area_lower.contains("river") {
         0.8 // Реки - высокая
@@ -73,7 +73,7 @@ pub fn estimate_params_from_site(site: &IrypSite) -> EnvironmentParams {
         // Базовая доступность зависит от широты (север влажнее)
         0.45 + (lat - 56.0) * 0.019
     };
-    params.water_availability = params.water_availability.clamp(0.3, 0.95);
+    params.soil_saturation_ratio = params.soil_saturation_ratio.clamp(0.3, 0.95);
 
     params
 }
@@ -153,14 +153,14 @@ mod tests {
         };
 
         let params_delta = estimate_params_from_site(&site);
-        assert!(params_delta.water_availability > 0.85);
+        assert!(params_delta.soil_saturation_ratio > 0.85);
 
         site.area = "Alas".to_string();
         let params_alas = estimate_params_from_site(&site);
-        assert!(params_alas.water_availability > 0.8);
+        assert!(params_alas.soil_saturation_ratio > 0.8);
 
         site.area = "Upland".to_string();
         let params_upland = estimate_params_from_site(&site);
-        assert!(params_upland.water_availability < params_delta.water_availability);
+        assert!(params_upland.soil_saturation_ratio < params_delta.soil_saturation_ratio);
     }
 }

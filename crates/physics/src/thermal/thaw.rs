@@ -24,10 +24,10 @@ impl ThawDepthCalculator {
 
     /// Расчет глубины протаивания по формуле Атласова
     ///
-    /// Формула: ξ_A = √(2λₜ·DDT / (L·ρw·w^0.7)) · exp(β·(1-V)) · (1 + γ·ln(ΔT/ΔT₀)) · f_moisture
+    /// Формула: ξ_A = √(2λₜ·DDT / (L·ρw·w^0.7)) · exp(β·(1-V)) · (1 + γ·ln(ΔT/ΔT₀))
     ///
     /// где:
-    /// - λₜ - теплопроводность талого грунта
+    /// - λₜ - теплопроводность талого грунта (зависит от влажности по Йоханзену)
     /// - DDT - градусо-дни тепла (degree-days of thawing)
     /// - L - скрытая теплота плавления льда
     /// - ρw - плотность воды
@@ -37,7 +37,6 @@ impl ThawDepthCalculator {
     /// - γ - коэффициент континентальности (0.12 для Якутии)
     /// - ΔT - годовая амплитуда температур
     /// - ΔT₀ - базовая амплитуда (40°C)
-    /// - f_moisture - фактор влажности грунта
     pub fn calculate(&self, year: u32) -> Result<f64> {
         if year == 0 {
             return Err(ThermokarstError::InvalidParameters(
@@ -47,8 +46,8 @@ impl ThawDepthCalculator {
 
         // 1. Базовая формула Стефана: ξ₀ = √(2λₜ·DDT / (L·ρw·w))
 
-        // Теплопроводность талого грунта
-        let lambda_t = self.params.soil_type.thermal_conductivity();
+        // Теплопроводность талого грунта с учетом влажности (модель Йоханзена)
+        let lambda_t = self.params.soil_type.thermal_conductivity(self.params.soil_saturation_ratio);
 
         // DDT (degree-days of thawing) в секундах
         // DDT = средняя температура × продолжительность сезона
@@ -85,13 +84,8 @@ impl ThawDepthCalculator {
             1.0
         };
 
-        // 4. Фактор влажности грунта
-        // Влажный грунт протаивает глубже из-за большей теплопроводности
-        // f_moisture = 1.0 + 0.3 * water_availability
-        let f_moisture = 1.0 + 0.3 * self.params.water_availability;
-
-        // 5. Итоговая формула Атласова с учетом влажности
-        let xi_a = xi_0 * k_fire * f_continental * f_moisture;
+        // 4. Итоговая формула Атласова (без f_moisture - влажность уже в λₜ)
+        let xi_a = xi_0 * k_fire * f_continental;
 
         // Учитываем время (корень из года для многолетнего процесса)
         let depth = xi_a * (year as f64).sqrt();

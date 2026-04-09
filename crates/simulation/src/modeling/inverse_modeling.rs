@@ -118,34 +118,42 @@ impl InverseModelingCalculator {
         params: &EnvironmentParams,
         soil_type: SoilType,
     ) -> f64 {
-        // Улучшенная формула Атласова:
+        // Улучшенная формула Атласова v0.3.0:
         // ξ = √(2λₜ·DDT / (L·ρw·w^0.7)) · exp(0.30·(1-V)) · (1 + 0.12·ln(ΔT/40))
 
-        let thermal_conductivity = match soil_type {
-            SoilType::Peat => 0.5,
-            SoilType::Sand => 2.0,
-            SoilType::Clay => 1.5,
-            SoilType::Silt => 1.2,
-            SoilType::Loam => 1.4,
+        // 1. Динамическая теплопроводность по модели Йоханзена
+        // TODO: Перенести lambda_dry и lambda_sat в enum SoilType
+        let (lambda_dry, lambda_sat) = match soil_type {
+            SoilType::Peat => (0.06, 0.5),
+            SoilType::Sand => (0.3, 2.2),
+            SoilType::Clay => (0.4, 1.6),
+            SoilType::Silt => (0.5, 1.8),
+            SoilType::Loam => (0.45, 1.7),
         };
 
-        let latent_heat = 334000.0; // Дж/кг
+        let thermal_conductivity = lambda_dry +
+            (lambda_sat - lambda_dry) * params.soil_saturation_ratio.powf(0.7);
+
+        // 2. Расчет годового DDT в секундах (критично для СИ!)
+        // air_temp здесь - средняя температура теплого сезона
+        let ddt_annual_seconds = params.air_temp * (params.warm_season_days as f64) * 86400.0;
+
+        let latent_heat = 334_000.0; // Дж/кг
         let water_density = 1000.0; // кг/м³
-        let ice_content = params.ice_content;
+        let ice_content = params.ice_content.max(0.01); // Защита от деления на 0
 
-        // Факторы
+        // 3. Факторы покрова и континентальности
         let vegetation_factor = (0.30 * (1.0 - params.vegetation_cover)).exp();
-        let temp_factor = 1.0 + 0.12 * (params.air_temp / 40.0).ln();
+        let temp_factor = 1.0 + 0.12 * (params.temperature_amplitude / 40.0).ln();
 
-        // Обратная формула: DDT = ξ² · L·ρw·w^0.7 / (2λₜ · факторы²)
-        let factors = vegetation_factor * temp_factor;
-        let ddt_per_year = (depth_m * depth_m * latent_heat * water_density * ice_content.powf(0.7))
-            / (2.0 * thermal_conductivity * factors * factors);
+        // 4. Прямой расчет ALT (сезонное протаивание за год)
+        let inner_sqrt = (2.0 * thermal_conductivity * ddt_annual_seconds) /
+                         (latent_heat * water_density * ice_content.powf(0.7));
 
-        // Оценка количества лет
-        // DDT накапливается каждый год, типичное значение ~1000-2000 градусо-дней
-        let typical_ddt_per_year = 1500.0; // градусо-дни/год для Якутии
-        let estimated_years = ddt_per_year / typical_ddt_per_year;
+        let xi_alt = inner_sqrt.sqrt() * vegetation_factor * temp_factor;
+
+        // 5. Обратный расчет времени: t = (ξ_thermo / ξ_ALT)²
+        let estimated_years = (depth_m / xi_alt).powi(2);
 
         estimated_years.max(1.0)
     }
@@ -194,7 +202,7 @@ impl InverseModelingCalculator {
                 ice_content: 0.6,
                 soil_type: SoilType::Peat,
                 vegetation_cover: 0.3,
-                water_availability: 0.4,
+                soil_saturation_ratio: 0.4,
                 permafrost_depth: 0.5,
                 warm_season_days: 90,
                 temperature_amplitude: 40.0,
@@ -205,7 +213,7 @@ impl InverseModelingCalculator {
                 ice_content: 0.4,
                 soil_type: SoilType::Silt,
                 vegetation_cover: 0.5,
-                water_availability: 0.3,
+                soil_saturation_ratio: 0.3,
                 permafrost_depth: 1.0,
                 warm_season_days: 110,
                 temperature_amplitude: 45.0,
@@ -216,7 +224,7 @@ impl InverseModelingCalculator {
                 ice_content: 0.3,
                 soil_type: SoilType::Silt,
                 vegetation_cover: 0.7,
-                water_availability: 0.25,
+                soil_saturation_ratio: 0.25,
                 permafrost_depth: 1.5,
                 warm_season_days: 120,
                 temperature_amplitude: 42.0,
@@ -227,7 +235,7 @@ impl InverseModelingCalculator {
                 ice_content: 0.4,
                 soil_type: SoilType::Silt,
                 vegetation_cover: 0.5,
-                water_availability: 0.3,
+                soil_saturation_ratio: 0.3,
                 permafrost_depth: 1.0,
                 warm_season_days: 110,
                 temperature_amplitude: 45.0,
@@ -267,7 +275,7 @@ impl InverseModelingCalculator {
             ice_content,
             soil_type: base_params.soil_type,
             vegetation_cover,
-            water_availability: base_params.water_availability,
+            soil_saturation_ratio: base_params.soil_saturation_ratio,
             permafrost_depth: base_params.permafrost_depth,
             warm_season_days: base_params.warm_season_days,
             temperature_amplitude: base_params.temperature_amplitude,

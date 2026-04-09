@@ -112,7 +112,7 @@ pub fn run(args: InverseArgs) -> Result<()> {
     println!("   Температура мерзлоты: {:.1}°C", result.inferred_params.permafrost_temp);
     println!("   Льдистость грунта: {:.1}%", result.inferred_params.ice_content * 100.0);
     println!("   Растительный покров: {:.1}%", result.inferred_params.vegetation_cover * 100.0);
-    println!("   Доступность воды: {:.1}%\n", result.inferred_params.water_availability * 100.0);
+    println!("   Доступность воды: {:.1}%\n", result.inferred_params.soil_saturation_ratio * 100.0);
 
     // Интерпретация
     println!("💡 Интерпретация:");

@@ -225,7 +225,7 @@ impl UncertaintyAnalyzer {
                 "air_temp" => params.air_temp = value,
                 "ice_content" => params.ice_content = value.clamp(0.1, 0.95),
                 "vegetation_cover" => params.vegetation_cover = value.clamp(0.0, 1.0),
-                "water_availability" => params.water_availability = value.clamp(0.0, 1.0),
+                "soil_saturation_ratio" => params.soil_saturation_ratio = value.clamp(0.0, 1.0),
                 _ => {
                     return Err(ThermokarstError::InvalidParameters(format!(
                         "Неизвестный параметр: {}",

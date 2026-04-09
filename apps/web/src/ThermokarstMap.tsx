@@ -22,24 +22,22 @@ export function ThermokarstMap({ latitude, longitude, results, currentYear }: Th
       // Инициализация карты
       const map = L.map('map').setView([latitude, longitude], 15);
 
-      // Добавляем слой OpenStreetMap
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
+      // Спутниковый слой по умолчанию
+      const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles © Esri',
         maxZoom: 19,
       }).addTo(map);
 
-      // Добавляем спутниковый слой (опционально)
-      const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles © Esri',
+      // Обычная карта
+      const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
         maxZoom: 19,
       });
 
       // Контроль слоев
       const baseMaps = {
-        'Карта': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap contributors',
-        }),
         'Спутник': satellite,
+        'Карта': street,
       };
 
       L.control.layers(baseMaps).addTo(map);
@@ -86,7 +84,7 @@ export function ThermokarstMap({ latitude, longitude, results, currentYear }: Th
               font-weight: bold;
               box-shadow: 0 2px 4px rgba(0,0,0,0.2);
               white-space: nowrap;
-            ">${data.year} (${data.diameter.toFixed(1)}м)</div>`,
+            ">${data.year} (Ø${data.diameter.toFixed(1)}м)</div>`,
             iconSize: [60, 20],
             iconAnchor: [30, 10],
           }),
@@ -103,38 +101,78 @@ export function ThermokarstMap({ latitude, longitude, results, currentYear }: Th
       }
     });
 
-    // Рисуем текущий год ярко
+    // Рисуем текущий год ярко с батиметрией (градиент глубины)
     const currentRadius = currentData.diameter / 2;
+
+    // Внешний круг (поверхность)
     const currentCircle = L.circle([latitude, longitude], {
       radius: currentRadius,
       color: '#ff6b6b',
       fillColor: '#ff6b6b',
-      fillOpacity: 0.4,
+      fillOpacity: 0.3,
       weight: 3,
     }).addTo(map);
 
     circlesRef.current.push(currentCircle);
 
-    // Добавляем маркер центра
+    // Батиметрия - градиент глубины (несколько кругов)
+    const depthLevels = 5;
+    for (let i = 1; i <= depthLevels; i++) {
+      const depthRatio = i / depthLevels;
+      const depthRadius = currentRadius * (1 - depthRatio * 0.3); // Уменьшаем радиус к центру
+      const depthOpacity = 0.1 + depthRatio * 0.4;
+
+      // Цвет от светло-синего к темно-синему (глубина)
+      const blueValue = Math.floor(255 - depthRatio * 100);
+      const depthColor = `rgb(100, 150, ${blueValue})`;
+
+      const depthCircle = L.circle([latitude, longitude], {
+        radius: depthRadius,
+        color: depthColor,
+        fillColor: depthColor,
+        fillOpacity: depthOpacity,
+        weight: 1,
+      }).addTo(map);
+
+      circlesRef.current.push(depthCircle);
+    }
+
+    // Добавляем маркер центра с глубиной
     const marker = L.marker([latitude, longitude], {
       icon: L.divIcon({
         className: 'center-marker',
-        html: '<div style="width: 10px; height: 10px; background: red; border: 2px solid white; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
-        iconSize: [10, 10],
-        iconAnchor: [5, 5],
+        html: `<div style="
+          width: 20px;
+          height: 20px;
+          background: linear-gradient(135deg, #ff6b6b 0%, #4a90e2 100%);
+          border: 3px solid white;
+          border-radius: 50%;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 10px;
+          font-weight: bold;
+          color: white;
+        ">↓</div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
       }),
     }).addTo(map);
 
     circlesRef.current.push(marker as any);
 
-    // Popup с информацией
+    // Popup с информацией включая батиметрию
     marker.bindPopup(`
       <div style="font-family: sans-serif;">
-        <h3 style="margin: 0 0 8px 0; font-size: 14px;">Термокарст</h3>
+        <h3 style="margin: 0 0 8px 0; font-size: 14px;">🏔️ Термокарст</h3>
         <p style="margin: 4px 0; font-size: 12px;"><strong>Год:</strong> ${currentData.year}</p>
         <p style="margin: 4px 0; font-size: 12px;"><strong>Диаметр:</strong> ${currentData.diameter.toFixed(2)} м</p>
-        <p style="margin: 4px 0; font-size: 12px;"><strong>Глубина:</strong> ${currentData.depth.toFixed(2)} м</p>
+        <p style="margin: 4px 0; font-size: 12px; color: #4a90e2;"><strong>⬇️ Глубина:</strong> ${currentData.depth.toFixed(2)} м</p>
         <p style="margin: 4px 0; font-size: 12px;"><strong>Координаты:</strong> ${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E</p>
+        <div style="margin-top: 8px; padding: 6px; background: #f0f9ff; border-radius: 4px; font-size: 11px;">
+          <strong>Батиметрия:</strong> Градиент показывает глубину от поверхности (красный) до дна (синий)
+        </div>
       </div>
     `).openPopup();
 
@@ -167,9 +205,19 @@ export function ThermokarstMap({ latitude, longitude, results, currentYear }: Th
           <div style={{ width: '20px', height: '20px', background: '#667eea', opacity: 0.3, borderRadius: '50%', marginRight: '8px' }}></div>
           <span>История роста</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
           <div style={{ width: '20px', height: '20px', background: '#ff6b6b', opacity: 0.4, border: '3px solid #ff6b6b', borderRadius: '50%', marginRight: '8px' }}></div>
           <span>Текущий год</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{
+            width: '20px',
+            height: '20px',
+            background: 'linear-gradient(to bottom, #ff6b6b, #4a90e2)',
+            borderRadius: '50%',
+            marginRight: '8px'
+          }}></div>
+          <span>Батиметрия (глубина)</span>
         </div>
       </div>
     </div>

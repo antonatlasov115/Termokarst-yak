@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import { Play, Download, Settings, Info, Thermometer, Droplets, Mountain, MapPin, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Play, Download, Settings, Info, Thermometer, Droplets, Mountain, MapPin, ArrowRight, ArrowLeft, Target } from 'lucide-react';
 import { ThermokarstMap } from './ThermokarstMap';
+import { LocationPicker } from './LocationPicker';
 import './App.css';
 
 type SimulationMode = 'forward' | 'inverse';
+type AppStep = 'location' | 'simulation';
 
 interface SimulationParams {
   region: 'north' | 'central' | 'south';
@@ -37,6 +39,7 @@ interface InverseResult {
 }
 
 function App() {
+  const [step, setStep] = useState<AppStep>('location');
   const [mode, setMode] = useState<SimulationMode>('forward');
   const [params, setParams] = useState<SimulationParams>({
     region: 'central',
@@ -59,6 +62,16 @@ function App() {
   const [showInfo, setShowInfo] = useState(false);
   const [currentYear, setCurrentYear] = useState(0);
   const [coordinates, setCoordinates] = useState({ lat: 62.5, lon: 129.3 });
+  const [measuredDiameter, setMeasuredDiameter] = useState<number | null>(null);
+
+  const handleLocationSelected = (lat: number, lon: number, diameter?: number) => {
+    setCoordinates({ lat, lon });
+    if (diameter) {
+      setMeasuredDiameter(diameter);
+      setInverseParams({ ...inverseParams, currentDiameter: diameter });
+    }
+    setStep('simulation');
+  };
 
   const runForwardSimulation = async () => {
     setIsRunning(true);
@@ -90,10 +103,14 @@ function App() {
   const runInverseSimulation = async () => {
     setIsRunning(true);
 
-    // Обратная симуляция - определяем возраст
+    // Используем измеренный диаметр если есть
+    const diameter = measuredDiameter || inverseParams.currentDiameter;
+    const depth = inverseParams.currentDepth;
+
+    // Обратная симуляция - определяем возраст по объему
+    const currentVolume = Math.PI * Math.pow(diameter / 2, 2) * depth;
     const estimatedAge = Math.round(
-      (inverseParams.currentDepth * inverseParams.currentDiameter) /
-      (params.temperature * (1 + params.iceContent))
+      Math.sqrt(currentVolume / (params.temperature * (1 + params.iceContent))) * 2
     );
     const startYear = inverseParams.observationYear - estimatedAge;
     const confidence = 0.75 + Math.random() * 0.2;
@@ -102,15 +119,15 @@ function App() {
     const mockResults: SimulationResult[] = [];
     for (let year = 0; year <= estimatedAge; year++) {
       const progress = year / estimatedAge;
-      const depth = inverseParams.currentDepth * Math.sqrt(progress);
-      const diameter = 2 + (inverseParams.currentDiameter - 2) * Math.log(year + 1) / Math.log(estimatedAge + 1);
-      const volume = Math.PI * Math.pow(diameter / 2, 2) * depth;
-      const stability = Math.max(0, 1 - (depth / 10) * (diameter / 20));
+      const d = depth * Math.sqrt(progress);
+      const diam = 2 + (diameter - 2) * Math.log(year + 1) / Math.log(estimatedAge + 1);
+      const volume = Math.PI * Math.pow(diam / 2, 2) * d;
+      const stability = Math.max(0, 1 - (d / 10) * (diam / 20));
 
       mockResults.push({
         year: startYear + year,
-        depth: parseFloat(depth.toFixed(2)),
-        diameter: parseFloat(diameter.toFixed(2)),
+        depth: parseFloat(d.toFixed(2)),
+        diameter: parseFloat(diam.toFixed(2)),
         volume: parseFloat(volume.toFixed(2)),
         stability: parseFloat(stability.toFixed(2)),
       });
@@ -132,10 +149,13 @@ function App() {
   const exportResults = () => {
     const data = mode === 'inverse' && inverseResult ? {
       mode: 'inverse',
+      coordinates,
+      measuredDiameter,
       inverseResult,
       results,
     } : {
       mode: 'forward',
+      coordinates,
       params,
       results,
     };
@@ -151,6 +171,91 @@ function App() {
 
   const finalResult = results[results.length - 1];
 
+  if (step === 'location') {
+    return (
+      <div className="app">
+        <header className="header">
+          <div className="header-content">
+            <h1>🏔️ Термокарст Якутии</h1>
+            <p>Выбор местоположения</p>
+          </div>
+          <button className="info-btn" onClick={() => setShowInfo(!showInfo)}>
+            <Info size={20} />
+          </button>
+        </header>
+
+        {showInfo && (
+          <div className="info-panel">
+            <h3>Выбор местоположения</h3>
+            <p>Кликните на карту чтобы выбрать точку для симуляции.</p>
+            <p><strong>Для обратной симуляции:</strong> используйте инструмент измерения чтобы обвести существующий водоем.</p>
+          </div>
+        )}
+
+        <div style={{ padding: '2rem' }}>
+          <div className="panel" style={{ marginBottom: '1.5rem' }}>
+            <h2><Target size={20} /> Выберите режим симуляции</h2>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <button
+                className={`tab-btn ${mode === 'forward' ? 'active' : ''}`}
+                onClick={() => setMode('forward')}
+                style={{
+                  flex: 1,
+                  padding: '1rem',
+                  border: mode === 'forward' ? '2px solid #667eea' : '2px solid #e2e8f0',
+                  background: mode === 'forward' ? '#667eea' : 'white',
+                  color: mode === 'forward' ? 'white' : '#4a5568',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                <ArrowRight size={20} />
+                <div>
+                  <div>Прямая симуляция</div>
+                  <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>Прогноз развития</div>
+                </div>
+              </button>
+              <button
+                className={`tab-btn ${mode === 'inverse' ? 'active' : ''}`}
+                onClick={() => setMode('inverse')}
+                style={{
+                  flex: 1,
+                  padding: '1rem',
+                  border: mode === 'inverse' ? '2px solid #667eea' : '2px solid #e2e8f0',
+                  background: mode === 'inverse' ? '#667eea' : 'white',
+                  color: mode === 'inverse' ? 'white' : '#4a5568',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                <ArrowLeft size={20} />
+                <div>
+                  <div>Обратная симуляция</div>
+                  <div style={{ fontSize: '0.8rem', opacity: 0.9 }}>Определение возраста</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <LocationPicker
+            mode={mode}
+            onLocationSelected={handleLocationSelected}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -158,9 +263,23 @@ function App() {
           <h1>🏔️ Термокарст Якутии</h1>
           <p>Симуляция образования термокарстовых линз v0.2.0</p>
         </div>
-        <button className="info-btn" onClick={() => setShowInfo(!showInfo)}>
-          <Info size={20} />
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            className="info-btn"
+            onClick={() => {
+              setStep('location');
+              setResults([]);
+              setInverseResult(null);
+              setMeasuredDiameter(null);
+            }}
+            title="Изменить местоположение"
+          >
+            <MapPin size={20} />
+          </button>
+          <button className="info-btn" onClick={() => setShowInfo(!showInfo)}>
+            <Info size={20} />
+          </button>
+        </div>
       </header>
 
       {showInfo && (
@@ -171,6 +290,7 @@ function App() {
             <li>✅ Прямая симуляция - прогноз развития</li>
             <li>✅ Обратная симуляция - определение возраста</li>
             <li>✅ Интерактивная карта с батиметрией</li>
+            <li>✅ Измерение размеров водоема</li>
             <li>✅ Научная достоверность: 9.0/10</li>
           </ul>
         </div>
@@ -222,6 +342,22 @@ function App() {
                 <ArrowLeft size={16} />
                 Обратная
               </button>
+            </div>
+
+            <div style={{
+              padding: '0.75rem',
+              background: '#f7fafc',
+              borderRadius: '8px',
+              marginBottom: '1rem',
+              fontSize: '0.85rem',
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>📍 Местоположение:</div>
+              <div>{coordinates.lat.toFixed(4)}°N, {coordinates.lon.toFixed(4)}°E</div>
+              {measuredDiameter && (
+                <div style={{ marginTop: '0.5rem', color: '#48bb78', fontWeight: 600 }}>
+                  ✓ Измерено: Ø {measuredDiameter.toFixed(1)}м
+                </div>
+              )}
             </div>
 
             {mode === 'forward' ? (
@@ -313,7 +449,7 @@ function App() {
               <>
                 <h2><Settings size={20} /> Обратная симуляция</h2>
                 <p style={{ fontSize: '0.85rem', color: '#718096', marginBottom: '1rem' }}>
-                  Определение времени образования термокарста
+                  Определение времени образования по размерам
                 </p>
 
                 <div className="form-group">
@@ -329,14 +465,21 @@ function App() {
                 </div>
 
                 <div className="form-group">
-                  <label>Текущий диаметр (м): {inverseParams.currentDiameter}</label>
+                  <label>
+                    Текущий диаметр (м): {measuredDiameter ? measuredDiameter.toFixed(1) : inverseParams.currentDiameter}
+                    {measuredDiameter && <span style={{ color: '#48bb78', marginLeft: '0.5rem' }}>✓ Измерено</span>}
+                  </label>
                   <input
                     type="range"
                     min="2"
                     max="50"
                     step="0.5"
-                    value={inverseParams.currentDiameter}
-                    onChange={(e) => setInverseParams({...inverseParams, currentDiameter: parseFloat(e.target.value)})}
+                    value={measuredDiameter || inverseParams.currentDiameter}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setInverseParams({...inverseParams, currentDiameter: val});
+                      if (measuredDiameter) setMeasuredDiameter(val);
+                    }}
                   />
                 </div>
 
@@ -387,41 +530,6 @@ function App() {
               </>
             )}
 
-            <div className="form-group" style={{ marginTop: '1rem' }}>
-              <label>
-                <MapPin size={16} />
-                Координаты
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                <input
-                  type="number"
-                  placeholder="Широта"
-                  value={coordinates.lat}
-                  onChange={(e) => setCoordinates({...coordinates, lat: parseFloat(e.target.value) || 62.5})}
-                  style={{
-                    flex: 1,
-                    padding: '0.5rem',
-                    border: '2px solid #e2e8f0',
-                    borderRadius: '8px',
-                    fontSize: '0.9rem'
-                  }}
-                />
-                <input
-                  type="number"
-                  placeholder="Долгота"
-                  value={coordinates.lon}
-                  onChange={(e) => setCoordinates({...coordinates, lon: parseFloat(e.target.value) || 129.3})}
-                  style={{
-                    flex: 1,
-                    padding: '0.5rem',
-                    border: '2px solid #e2e8f0',
-                    borderRadius: '8px',
-                    fontSize: '0.9rem'
-                  }}
-                />
-              </div>
-            </div>
-
             {results.length > 0 && (
               <button className="btn btn-secondary" onClick={exportResults}>
                 <Download size={20} />
@@ -445,6 +553,12 @@ function App() {
                 <span className="stat-label">Уверенность:</span>
                 <span className="stat-value">{(inverseResult.confidence * 100).toFixed(0)}%</span>
               </div>
+              {measuredDiameter && (
+                <div className="stat">
+                  <span className="stat-label">Измеренный Ø:</span>
+                  <span className="stat-value" style={{ color: '#48bb78' }}>{measuredDiameter.toFixed(1)} м</span>
+                </div>
+              )}
             </div>
           )}
 
